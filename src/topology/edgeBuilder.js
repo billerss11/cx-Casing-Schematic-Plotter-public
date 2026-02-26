@@ -8,6 +8,7 @@ import {
     NODE_KIND_ANNULUS_A,
     NODE_KIND_BORE,
     NODE_KIND_FORMATION_ANNULUS,
+    NODE_KIND_TUBING_ANNULUS,
     TOPOLOGY_EPSILON,
     TOPOLOGY_VOLUME_KINDS,
     SOURCE_KIND_LEAK,
@@ -67,6 +68,122 @@ function resolveBoundaryEquipmentEffectByVolumeKind(volumeKind, equipmentEffects
     return byVolume[volumeKind] ?? null;
 }
 
+function resolveBlockedTransitionState(fromNode, toNode, equipmentEffects = {}) {
+    const blockedByMaterial = fromNode?.meta?.isBlocked === true || toNode?.meta?.isBlocked === true;
+    const tubingAnnulusEffect = resolveBoundaryEquipmentEffectByVolumeKind(
+        NODE_KIND_TUBING_ANNULUS,
+        equipmentEffects
+    );
+    const annulusAEffect = resolveBoundaryEquipmentEffectByVolumeKind(
+        NODE_KIND_ANNULUS_A,
+        equipmentEffects
+    );
+    const blockedByEquipment = tubingAnnulusEffect?.blocked === true || annulusAEffect?.blocked === true;
+    const cost = blockedByMaterial || blockedByEquipment
+        ? Math.max(
+            blockedByMaterial ? 1 : 0,
+            Number(tubingAnnulusEffect?.cost ?? 0),
+            Number(annulusAEffect?.cost ?? 0),
+            1
+        )
+        : 0;
+
+    return {
+        blockedByMaterial,
+        blockedByEquipment,
+        cost,
+        equipmentContributors: [
+            ...toSafeArray(tubingAnnulusEffect?.contributors),
+            ...toSafeArray(annulusAEffect?.contributors)
+        ]
+    };
+}
+
+function appendTubingAnnulusTransitionEdges({
+    edges,
+    edgeReasons,
+    currentInterval,
+    nextInterval,
+    intervalNodeByKind,
+    boundaryDepth,
+    equipmentEffects
+}) {
+    const currentTubingAnnulusNode = intervalNodeByKind.get(
+        `${currentInterval.intervalIndex}|${NODE_KIND_TUBING_ANNULUS}`
+    ) ?? null;
+    const nextTubingAnnulusNode = intervalNodeByKind.get(
+        `${nextInterval.intervalIndex}|${NODE_KIND_TUBING_ANNULUS}`
+    ) ?? null;
+    const currentAnnulusANode = intervalNodeByKind.get(
+        `${currentInterval.intervalIndex}|${NODE_KIND_ANNULUS_A}`
+    ) ?? null;
+    const nextAnnulusANode = intervalNodeByKind.get(
+        `${nextInterval.intervalIndex}|${NODE_KIND_ANNULUS_A}`
+    ) ?? null;
+
+    const transitionDefinitions = [];
+    if (currentAnnulusANode && !currentTubingAnnulusNode && nextTubingAnnulusNode) {
+        transitionDefinitions.push({
+            fromNode: currentAnnulusANode,
+            toNode: nextTubingAnnulusNode,
+            transitionType: 'tubing_annulus_entry'
+        });
+    }
+    if (currentTubingAnnulusNode && !nextTubingAnnulusNode && nextAnnulusANode) {
+        transitionDefinitions.push({
+            fromNode: currentTubingAnnulusNode,
+            toNode: nextAnnulusANode,
+            transitionType: 'tubing_annulus_exit'
+        });
+    }
+
+    transitionDefinitions.forEach((definition) => {
+        const transitionState = resolveBlockedTransitionState(
+            definition.fromNode,
+            definition.toNode,
+            equipmentEffects
+        );
+        const blocked = transitionState.blockedByMaterial || transitionState.blockedByEquipment;
+        const edgeId = createEdgeId(
+            EDGE_KIND_VERTICAL,
+            definition.fromNode.nodeId,
+            definition.toNode.nodeId,
+            `tubing-annulus-transition:${definition.transitionType}`
+        );
+        appendEdge(edges, edgeReasons, {
+            edgeId,
+            from: definition.fromNode.nodeId,
+            to: definition.toNode.nodeId,
+            kind: EDGE_KIND_VERTICAL,
+            cost: transitionState.cost,
+            state: blocked ? 'closed_failable' : 'open',
+            meta: {
+                volumeKey: NODE_KIND_TUBING_ANNULUS,
+                fromVolumeKey: definition.fromNode.kind,
+                toVolumeKey: definition.toNode.kind,
+                transitionType: definition.transitionType
+            },
+            reason: {
+                ruleId: 'tubing-annulus-transition',
+                summary: blocked
+                    ? 'Tubing-annulus to Annulus A transition at tubing boundary is blocked by interval content or equipment seal behavior.'
+                    : 'Tubing-annulus to Annulus A transition is open across tubing boundary.',
+                details: {
+                    fromInterval: currentInterval.intervalIndex,
+                    toInterval: nextInterval.intervalIndex,
+                    boundaryDepth: Number.isFinite(boundaryDepth) ? boundaryDepth : null,
+                    fromVolumeKey: definition.fromNode.kind,
+                    toVolumeKey: definition.toNode.kind,
+                    transitionType: definition.transitionType,
+                    blockedByMaterial: transitionState.blockedByMaterial,
+                    blockedByEquipment: transitionState.blockedByEquipment,
+                    equipmentContributors: transitionState.equipmentContributors
+                }
+            }
+        });
+    });
+}
+
 export function buildVerticalEdges(intervals, intervalNodeByKind, equipmentRows = [], options = {}) {
     const edges = [];
     const edgeReasons = {};
@@ -122,6 +239,16 @@ export function buildVerticalEdges(intervals, intervalNodeByKind, equipmentRows 
                     }
                 }
             });
+        });
+
+        appendTubingAnnulusTransitionEdges({
+            edges,
+            edgeReasons,
+            currentInterval,
+            nextInterval,
+            intervalNodeByKind,
+            boundaryDepth,
+            equipmentEffects
         });
     }
 
@@ -228,7 +355,21 @@ function resolveVolumeKindForCasingBoundarySlot(slotIndex) {
     return null;
 }
 
-function createDefaultRadialVolumePair() {
+function createDefaultRadialVolumePair(intervalNodeByKind, interval) {
+    const tubingAnnulusNode = resolveIntervalNodeByVolumeKind(
+        intervalNodeByKind,
+        interval,
+        NODE_KIND_TUBING_ANNULUS
+    );
+    if (tubingAnnulusNode) {
+        return {
+            innerVolumeKind: NODE_KIND_BORE,
+            outerVolumeKind: NODE_KIND_TUBING_ANNULUS,
+            pairSource: 'default_tubing_inner_tubing_annulus',
+            hostCasingIndex: null
+        };
+    }
+
     return {
         innerVolumeKind: NODE_KIND_BORE,
         outerVolumeKind: NODE_KIND_ANNULUS_A,
@@ -237,7 +378,7 @@ function createDefaultRadialVolumePair() {
     };
 }
 
-function resolveCasingHostRadialVolumePair(interval, resolvedHost, pipeReferenceMap) {
+function resolveCasingHostRadialVolumePair(interval, resolvedHost, pipeReferenceMap, intervalNodeByKind) {
     if (resolvedHost?.hostType !== PIPE_HOST_TYPE_CASING) return null;
     const casingRows = toSafeArray(pipeReferenceMap?.rowsByHostType?.[PIPE_HOST_TYPE_CASING]);
     const activeCasingRows = casingRows
@@ -251,8 +392,13 @@ function resolveCasingHostRadialVolumePair(interval, resolvedHost, pipeReference
     }
     if (hostCasingIndex < 0) return null;
 
+    const tubingAnnulusNode = resolveIntervalNodeByVolumeKind(
+        intervalNodeByKind,
+        interval,
+        NODE_KIND_TUBING_ANNULUS
+    );
     const innerVolumeKind = hostCasingIndex === 0
-        ? NODE_KIND_BORE
+        ? (tubingAnnulusNode ? NODE_KIND_TUBING_ANNULUS : NODE_KIND_BORE)
         : resolveVolumeKindForCasingBoundarySlot(hostCasingIndex - 1);
     const outerVolumeKind = resolveVolumeKindForCasingBoundarySlot(hostCasingIndex);
     if (!innerVolumeKind || !outerVolumeKind || innerVolumeKind === outerVolumeKind) {
@@ -353,11 +499,12 @@ export function buildRadialEdges(stateSnapshot, intervals, intervalNodeByKind, p
             if (!markerRangeIntersectsInterval(markerRange, interval)) return;
             if (tubingHostLeak && !intervalsOverlap(hostDepthRange, interval)) return;
 
-            const fallbackVolumePair = createDefaultRadialVolumePair();
+            const fallbackVolumePair = createDefaultRadialVolumePair(intervalNodeByKind, interval);
             const casingHostVolumePair = resolveCasingHostRadialVolumePair(
                 interval,
                 resolvedHost,
-                pipeReferenceMap
+                pipeReferenceMap,
+                intervalNodeByKind
             );
             let radialVolumePair = tubingHostLeak
                 ? fallbackVolumePair

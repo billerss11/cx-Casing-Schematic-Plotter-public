@@ -37,6 +37,7 @@ import {
     applySampleTranslations,
     translateEnumValuesInState
 } from './languageOrchestration.js';
+import bundledSampleProject from '@/data/samples/defaultSampleProject.json';
 
 const projectStore = useProjectStore(pinia);
 
@@ -469,24 +470,17 @@ function buildSampleWellData() {
     };
 }
 
-function buildResetWellData() {
-    return {
-        ...createEmptyWellData(),
-        trajectory: getDefaultTrajectoryRows()
-    };
-}
-
-function buildImportedExcelWellData(projectData = {}) {
+function buildWellDataPayload(projectData = {}) {
     const trajectory = normalizeTrajectoryRows(projectData.trajectory);
     return {
         data: {
             casingData: withDefaultPipeComponentType(projectData.casingData || []),
-            tubingData: [],
-            drillStringData: [],
-            equipmentData: [],
+            tubingData: projectData.tubingData || [],
+            drillStringData: projectData.drillStringData || [],
+            equipmentData: projectData.equipmentData || [],
             horizontalLines: projectData.horizontalLines || [],
             annotationBoxes: normalizeAnnotationBoxes(projectData.annotationBoxes || []),
-            userAnnotations: [],
+            userAnnotations: normalizeUserAnnotations(projectData.userAnnotations || []),
             cementPlugs: projectData.cementPlugs || [],
             annulusFluids: normalizeAnnulusFluids(projectData.annulusFluids || []),
             markers: projectData.markers || [],
@@ -495,6 +489,27 @@ function buildImportedExcelWellData(projectData = {}) {
         },
         trajectory
     };
+}
+
+function buildImportedExcelWellData(projectData = {}) {
+    return buildWellDataPayload(projectData);
+}
+
+function buildBundledSampleData() {
+    try {
+        const normalizedProject = normalizeImportedProjectPayload(
+            ensureProjectSchemaV3(cloneSnapshot(bundledSampleProject))
+        );
+        const sampleWell = normalizedProject.wells?.[0];
+        if (!sampleWell?.data) return null;
+        return {
+            ...buildWellDataPayload(sampleWell.data),
+            config: cloneSnapshot(sampleWell.config || {})
+        };
+    } catch (error) {
+        console.warn('Failed to parse bundled sample project; using legacy sample rows.', error);
+        return null;
+    }
 }
 
 function appendImportedWellAndActivate({ data, config, file, defaultName }) {
@@ -513,11 +528,13 @@ function loadSampleData(options = {}) {
     ensureProjectIsReady();
 
     const activeConfig = cloneSnapshot(projectStore.activeWell?.config ?? {});
-    const sampleData = buildSampleWellData();
+    const bundledSample = buildBundledSampleData();
+    const sampleData = bundledSample?.data ?? buildSampleWellData();
+    const sampleViewMode = String(bundledSample?.config?.viewMode || '').trim() || 'vertical';
     const sampleConfig = resolveImportedWellConfig(
         {
             ...activeConfig,
-            viewMode: 'vertical'
+            viewMode: sampleViewMode
         },
         sampleData.trajectory
     );
@@ -540,22 +557,8 @@ function loadSampleData(options = {}) {
 }
 
 function resetData() {
-    ensureProjectIsReady();
-
-    const activeConfig = cloneSnapshot(projectStore.activeWell?.config ?? {});
-    const resetDataPayload = buildResetWellData();
-    const resetConfig = resolveImportedWellConfig(activeConfig, resetDataPayload.trajectory);
-
-    projectStore.replaceActiveWellContent(
-        { data: resetDataPayload, config: resetConfig },
-        { requestRender: false }
-    );
-    projectStore.syncActiveWellData();
-
-    clearSelection('all', { deferSync: true });
-    syncSelectionIndicators();
+    loadSampleData({ silent: true });
     hidePlotTooltip();
-    requestSchematicRender({ immediate: true });
     showAlert(t('alert.reset_success'), 'info');
 }
 

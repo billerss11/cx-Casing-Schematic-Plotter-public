@@ -1,15 +1,16 @@
 import { getIntervalsWithBoundaryReasons, getStackAtDepth } from '@/physics/physicsCore.js';
 import {
-    resolveAnnulusLayerByIndex,
     resolveFormationAnnulusLayer,
     resolveAnnulusSlotIndex,
     resolveBoreLayer
 } from '@/utils/physicsLayers.js';
+import { resolveAnnulusLayerForVolumeKind } from '@/topology/annulusVolumeMapping.js';
 import {
     MODELED_ANNULUS_VOLUME_SLOTS,
     NODE_KIND_BORE,
     NODE_KIND_FORMATION_ANNULUS,
     NODE_KIND_SURFACE,
+    NODE_KIND_TUBING_ANNULUS,
     TOPOLOGY_EPSILON
 } from '@/topology/topologyTypes.js';
 
@@ -36,6 +37,11 @@ function resolveModeledAnnulusKindBySlotIndex(slotIndex) {
     if (!Number.isInteger(slotIndex)) return null;
     const modeledSlot = MODELED_ANNULUS_VOLUME_SLOTS.find((candidate) => candidate.slotIndex === slotIndex);
     return modeledSlot?.kind ?? null;
+}
+
+function shouldAllowFormationRepresentationForAnnulusKind(kind) {
+    const modeledSlot = MODELED_ANNULUS_VOLUME_SLOTS.find((candidate) => candidate.kind === kind);
+    return modeledSlot?.allowFormationRepresentation === true;
 }
 
 function createAnnulusNode(kind, top, bottom, annulusLayer) {
@@ -82,10 +88,18 @@ function createVolumeNodesForInterval(interval, stack = []) {
         });
     }
 
-    MODELED_ANNULUS_VOLUME_SLOTS.forEach(({ kind, slotIndex, allowFormationRepresentation }) => {
-        const annulusLayer = resolveAnnulusLayerByIndex(stack, slotIndex);
+    const modeledAnnulusKinds = [
+        NODE_KIND_TUBING_ANNULUS,
+        ...MODELED_ANNULUS_VOLUME_SLOTS.map((slot) => slot.kind)
+    ];
+
+    modeledAnnulusKinds.forEach((kind) => {
+        const annulusLayer = resolveAnnulusLayerForVolumeKind(stack, kind);
         if (!annulusLayer) return;
-        if (annulusLayer?.isFormation === true && allowFormationRepresentation !== true) return;
+        if (annulusLayer?.isFormation === true) {
+            if (kind === NODE_KIND_TUBING_ANNULUS) return;
+            if (!shouldAllowFormationRepresentationForAnnulusKind(kind)) return;
+        }
         nodes.push(createAnnulusNode(kind, top, bottom, annulusLayer));
     });
 

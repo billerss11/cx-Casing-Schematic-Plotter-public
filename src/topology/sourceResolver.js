@@ -1,8 +1,12 @@
-import { resolveAnnulusLayerByIndex, resolveFormationAnnulusLayer, resolveAnnulusSlotIndex } from '@/utils/physicsLayers.js';
+import { resolveFormationAnnulusLayer, resolveAnnulusSlotIndex } from '@/utils/physicsLayers.js';
 import {
-    MAX_MODELED_ANNULUS_SLOT_INDEX,
+    resolveAnnulusLayerForVolumeKind,
+    resolveMaxModeledAnnulusSlotIndexForStack
+} from '@/topology/annulusVolumeMapping.js';
+import {
     MODELED_ANNULUS_VOLUME_SLOTS,
     NODE_KIND_FORMATION_ANNULUS,
+    NODE_KIND_TUBING_ANNULUS,
     SOURCE_POLICY_MODE_SCENARIO_EXPLICIT,
     SOURCE_POLICY_MODE_FLUID_OPT_IN,
     SOURCE_POLICY_MODE_MARKER_DEFAULT,
@@ -33,6 +37,10 @@ const SOURCE_WARNING_SCENARIO_SOURCE_UNSUPPORTED_VOLUME = TOPOLOGY_WARNING_CODES
 const SOURCE_WARNING_SCENARIO_SOURCE_MISSING_DEPTH_RANGE = TOPOLOGY_WARNING_CODES.SCENARIO_SOURCE_MISSING_DEPTH_RANGE;
 const SOURCE_WARNING_SCENARIO_SOURCE_NO_RESOLVABLE_INTERVAL = TOPOLOGY_WARNING_CODES.SCENARIO_SOURCE_NO_RESOLVABLE_INTERVAL;
 const SOURCE_WARNING_SCENARIO_ROWS_WITH_NO_RESOLVED_NODES = TOPOLOGY_WARNING_CODES.SCENARIO_ROWS_WITH_NO_RESOLVED_NODES;
+const MODELED_ANNULUS_SOURCE_VOLUME_KINDS = Object.freeze([
+    NODE_KIND_TUBING_ANNULUS,
+    ...MODELED_ANNULUS_VOLUME_SLOTS.map((slot) => slot.kind)
+]);
 
 export function normalizeStateSnapshot(stateSnapshot = {}) {
     const source = stateSnapshot && typeof stateSnapshot === 'object' ? stateSnapshot : {};
@@ -95,8 +103,8 @@ export function buildFluidSourceNodes(stateSnapshot, intervals, intervalNodeByKi
 
     intervals.forEach((interval) => {
         const stack = Array.isArray(interval?.stack) ? interval.stack : [];
-        MODELED_ANNULUS_VOLUME_SLOTS.forEach(({ kind, slotIndex }) => {
-            const annulusLayer = resolveAnnulusLayerByIndex(stack, slotIndex);
+        MODELED_ANNULUS_SOURCE_VOLUME_KINDS.forEach((kind) => {
+            const annulusLayer = resolveAnnulusLayerForVolumeKind(stack, kind);
             const annulusNode = intervalNodeByKind.get(`${interval.intervalIndex}|${kind}`) ?? null;
             const annulusMaterial = String(annulusLayer?.material ?? '').trim().toLowerCase();
             if (!annulusLayer || !annulusNode || annulusMaterial !== 'fluid') return;
@@ -142,12 +150,13 @@ export function buildFluidSourceNodes(stateSnapshot, intervals, intervalNodeByKi
             }
         }
 
+        const maxModeledSlotIndex = resolveMaxModeledAnnulusSlotIndexForStack(stack);
         const nonModeledFluidLayers = stack.filter((layer) => {
             if (layer?.role !== 'annulus') return false;
             const material = String(layer?.material ?? '').trim().toLowerCase();
             if (material !== 'fluid') return false;
             const slotIndex = resolveAnnulusSlotIndex(layer);
-            if (!Number.isInteger(slotIndex) || slotIndex <= MAX_MODELED_ANNULUS_SLOT_INDEX) return false;
+            if (!Number.isInteger(slotIndex) || slotIndex <= maxModeledSlotIndex) return false;
             return layer?.isFormation !== true;
         });
         if (nonModeledFluidLayers.length > 0) {
@@ -158,7 +167,7 @@ export function buildFluidSourceNodes(stateSnapshot, intervals, intervalNodeByKi
     if (fluidRows.length > 0 && sourceNodeIds.size === 0) {
         validationWarnings.push(createTopologyValidationWarning(
             SOURCE_WARNING_FLUID_ROWS_WITHOUT_MODELED_SOURCE_NODES,
-            'Fluid intervals exist, but none currently map to ANNULUS_A/ANNULUS_B/ANNULUS_C/ANNULUS_D/FORMATION_ANNULUS sources in the topology MVP.'
+            'Fluid intervals exist, but none currently map to TUBING_ANNULUS/ANNULUS_A/ANNULUS_B/ANNULUS_C/ANNULUS_D/FORMATION_ANNULUS sources in the topology MVP.'
         ));
     }
 
@@ -201,7 +210,7 @@ export function buildExplicitScenarioSourceNodes(stateSnapshot, intervals, inter
         if (!volumeKey) {
             validationWarnings.push(createTopologyValidationWarning(
                 SOURCE_WARNING_SCENARIO_SOURCE_UNSUPPORTED_VOLUME,
-                'Scenario source row has an unsupported volume key. Use TUBING_INNER (legacy BORE), ANNULUS_A, ANNULUS_B, ANNULUS_C, ANNULUS_D, or FORMATION_ANNULUS for MVP.',
+                'Scenario source row has an unsupported volume key. Use TUBING_INNER (legacy BORE), TUBING_ANNULUS, ANNULUS_A, ANNULUS_B, ANNULUS_C, ANNULUS_D, or FORMATION_ANNULUS for MVP.',
                 {
                     rowId: rowId || undefined
                 }

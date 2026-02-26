@@ -339,7 +339,6 @@ const figHeightValue = computed(() => {
   const value = Number.isFinite(parsed) ? parsed : fallback;
   return Math.max(520, Math.round(value));
 });
-const figHeightCss = computed(() => `${figHeightValue.value}px`);
 const canvasWidthMultiplierValue = computed(() => {
   const parsed = Number(props.config?.canvasWidthMultiplier);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
@@ -1266,7 +1265,7 @@ onBeforeUnmount(() => {
   overflow: auto;
   min-height: 520px;
   width: 100%;
-  height: v-bind(figHeightCss);
+  height: 100%;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   background:

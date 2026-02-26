@@ -33,6 +33,10 @@ import {
   resolveTopologyOverlaySynchronizationState
 } from '@/topology/resultSynchronization.js';
 import {
+  formatTopologyOverlayHintDetail,
+  resolveTopologyOverlayHintKey
+} from '@/topology/overlaySynchronizationPresentation.js';
+import {
   buildTopologyWarningNavigationByRowId,
   resolveTopologyWarningRowNavigationTarget
 } from '@/topology/warningNavigation.js';
@@ -69,7 +73,7 @@ const inspectorTableControls = reactive({
   edgeKind: 'all'
 });
 const topologyGraphControls = reactive({
-  visible: false,
+  visible: true,
   scope: 'min_path'
 });
 const selectedInspectorNodeId = ref(null);
@@ -455,27 +459,10 @@ const shouldShowOverlayUpdatingHint = computed(() => (
   topologyOverlaySynchronization.value.overlaySuppressed === true
 ));
 const topologyOverlayUpdatingHintKey = computed(() => {
-  const reason = topologyOverlaySynchronization.value.reason;
-  if (reason === 'stale_result') return 'ui.analysis.topology.overlay_sync.stale_result';
-  if (reason === 'expected_request_pending') return 'ui.analysis.topology.overlay_sync.geometry_pending';
-  if (reason === 'request_mismatch') return 'ui.analysis.topology.overlay_sync.request_mismatch';
-  return 'ui.analysis.topology.overlay_sync.updating';
+  return resolveTopologyOverlayHintKey(topologyOverlaySynchronization.value);
 });
 const topologyOverlayUpdatingHintDetail = computed(() => {
-  const latestRequestId = topologyOverlaySynchronization.value.latestRequestId;
-  const resultRequestId = topologyOverlaySynchronization.value.resultRequestId;
-  const expectedRequestId = topologyOverlaySynchronization.value.expectedRequestId;
-  if (
-    Number.isInteger(resultRequestId)
-    && Number.isInteger(expectedRequestId)
-    && Number.isInteger(latestRequestId)
-  ) {
-    return `overlay_request=${resultRequestId} | geometry_request=${expectedRequestId} | latest_request=${latestRequestId}`;
-  }
-  if (Number.isInteger(resultRequestId) && Number.isInteger(latestRequestId)) {
-    return `overlay_request=${resultRequestId} | latest_request=${latestRequestId}`;
-  }
-  return '';
+  return formatTopologyOverlayHintDetail(topologyOverlaySynchronization.value);
 });
 
 const topologyIsLoading = computed(() => activeWellTopology.value?.loading === true);
@@ -1430,6 +1417,22 @@ watch(filteredTopologyInspectorEdgeRows, (rows) => {
             {{ topologyOverlayUpdatingHintDetail }}
           </span>
         </p>
+        <div class="analysis-topology__metrics">
+          <article
+            v-for="metric in topologyStats"
+            :key="metric.key"
+            class="analysis-topology-metric"
+          >
+            <p class="analysis-topology-metric__label" :data-i18n="metric.labelKey">{{ metric.label }}</p>
+            <p class="analysis-topology-metric__value">{{ metric.value }}</p>
+          </article>
+        </div>
+
+        <details class="analysis-topology__diagnostics">
+          <summary class="analysis-topology__diagnostics-summary" data-i18n="ui.analysis.topology.diagnostics.title">
+            Advanced diagnostics (debug)
+          </summary>
+          <div class="analysis-topology__diagnostics-body">
         <p v-if="topologyMetaText" class="analysis-topology__meta">{{ topologyMetaText }}</p>
         <p class="analysis-topology__meta">
           <span data-i18n="ui.analysis.topology.source_policy.label">Source policy:</span>
@@ -1443,21 +1446,13 @@ watch(filteredTopologyInspectorEdgeRows, (rows) => {
             }}
           </span>
         </p>
+        <p class="analysis-topology__meta" data-i18n="ui.analysis.topology.source_policy.volume_guide">
+          Volume guide: use TUBING_ANNULUS for tubing-adjacent annulus; use ANNULUS_A for first casing annulus.
+        </p>
         <p v-if="topologyTraversalContractsText" class="analysis-topology__meta">
           <span data-i18n="ui.analysis.topology.traversal_contracts.label">Traversal contracts:</span>
           <span>{{ topologyTraversalContractsText }}</span>
         </p>
-
-        <div class="analysis-topology__metrics">
-          <article
-            v-for="metric in topologyStats"
-            :key="metric.key"
-            class="analysis-topology-metric"
-          >
-            <p class="analysis-topology-metric__label" :data-i18n="metric.labelKey">{{ metric.label }}</p>
-            <p class="analysis-topology-metric__value">{{ metric.value }}</p>
-          </article>
-        </div>
 
         <div class="analysis-topology__notes">
           <p class="analysis-topology__notes-title" data-i18n="ui.analysis.topology.notes.title">Quick meaning</p>
@@ -1478,6 +1473,9 @@ watch(filteredTopologyInspectorEdgeRows, (rows) => {
           </p>
           <p class="analysis-topology__note" data-i18n="ui.analysis.topology.notes.envelope_overlap">
             Envelope overlap means the same barrier element appears in both primary and secondary heuristic envelopes.
+          </p>
+          <p class="analysis-topology__note" data-i18n="ui.analysis.topology.notes.volume_semantics">
+            Volume semantics: TUBING_ANNULUS tracks tubing-to-first-casing annulus; ANNULUS_A tracks first casing-to-casing annulus.
           </p>
         </div>
 
@@ -1913,6 +1911,8 @@ watch(filteredTopologyInspectorEdgeRows, (rows) => {
             </p>
           </div>
         </div>
+          </div>
+        </details>
 
         <div class="analysis-topology__toggles">
           <p class="analysis-topology__toggles-title" data-i18n="ui.analysis.topology.toggle.title">Overlay layers</p>
@@ -2411,6 +2411,41 @@ watch(filteredTopologyInspectorEdgeRows, (rows) => {
   margin: 0;
   font-size: 0.76rem;
   color: var(--muted);
+}
+
+.analysis-topology__diagnostics {
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+.analysis-topology__diagnostics-summary {
+  margin: 0;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  list-style: none;
+  user-select: none;
+}
+
+.analysis-topology__diagnostics-summary::-webkit-details-marker {
+  display: none;
+}
+
+.analysis-topology__diagnostics-summary::before {
+  content: '▸';
+  margin-right: 6px;
+}
+
+.analysis-topology__diagnostics[open] .analysis-topology__diagnostics-summary::before {
+  content: '▾';
+}
+
+.analysis-topology__diagnostics-body {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .analysis-topology__metrics {

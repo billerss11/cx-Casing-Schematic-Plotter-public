@@ -1,0 +1,435 @@
+{
+  "projectSchemaVersion": "3.0",
+  "projectName": "Project",
+  "projectAuthor": "",
+  "activeWellId": "3ce91bf6-e133-40ff-bd42-1eb0b9d32a0d",
+  "projectConfig": {
+    "defaultUnits": "ft"
+  },
+  "wells": [
+    {
+      "id": "3ce91bf6-e133-40ff-bd42-1eb0b9d32a0d",
+      "name": "Well 1",
+      "data": {
+        "casingData": [
+          {
+            "label": "Conductor",
+            "od": 20,
+            "weight": 94,
+            "idOverride": null,
+            "manualHoleSize": null,
+            "grade": "H40",
+            "top": 1400,
+            "bottom": 2000,
+            "toc": null,
+            "boc": null,
+            "labelXPos": null,
+            "manualLabelDepth": null,
+            "casingLabelFontSize": null,
+            "depthLabelFontSize": null,
+            "depthLabelOffset": null,
+            "showTop": true,
+            "showBottom": true,
+            "__i18n": {
+              "label": "sample.casing.conductor"
+            },
+            "componentType": "pipe",
+            "rowId": "casing-b1c0f7e5-cd93-4c11-a7e3-ebb0d8bf2728"
+          },
+          {
+            "label": "Surface casing",
+            "od": 13.375,
+            "weight": 54.5,
+            "idOverride": null,
+            "manualHoleSize": null,
+            "grade": "J55",
+            "top": 1400,
+            "bottom": 3500,
+            "toc": 1800,
+            "boc": null,
+            "labelXPos": null,
+            "manualLabelDepth": null,
+            "casingLabelFontSize": null,
+            "depthLabelFontSize": null,
+            "depthLabelOffset": null,
+            "showTop": true,
+            "showBottom": true,
+            "__i18n": {
+              "label": "sample.casing.surface"
+            },
+            "componentType": "pipe",
+            "rowId": "casing-259b3844-f5c7-4ef4-baa2-c4be60ee5fd0"
+          },
+          {
+            "label": "Intermediate casing",
+            "od": 9.625,
+            "weight": 40,
+            "idOverride": null,
+            "manualHoleSize": null,
+            "grade": "L80",
+            "top": 1400,
+            "bottom": 9000,
+            "toc": 3000,
+            "boc": null,
+            "labelXPos": null,
+            "manualLabelDepth": 4800,
+            "casingLabelFontSize": null,
+            "depthLabelFontSize": null,
+            "depthLabelOffset": null,
+            "showTop": true,
+            "showBottom": true,
+            "__i18n": {
+              "label": "sample.casing.intermediate"
+            },
+            "componentType": "pipe",
+            "rowId": "casing-e5ef67a0-08ec-46c3-a5e7-42eb84175ab6"
+          },
+          {
+            "label": "Production liner",
+            "od": 7,
+            "weight": 29,
+            "idOverride": null,
+            "manualHoleSize": null,
+            "grade": "P110",
+            "top": 8000,
+            "bottom": 12500,
+            "toc": 7900,
+            "boc": null,
+            "labelXPos": null,
+            "manualLabelDepth": null,
+            "casingLabelFontSize": null,
+            "depthLabelFontSize": null,
+            "depthLabelOffset": null,
+            "showTop": true,
+            "showBottom": true,
+            "__i18n": {
+              "label": "sample.casing.production"
+            },
+            "componentType": "pipe",
+            "rowId": "casing-6a96ed57-b4e0-4ebd-a5ba-4cf1578b76e4"
+          },
+          {
+            "label": "Open hole",
+            "od": 4.5,
+            "weight": 0,
+            "idOverride": null,
+            "manualHoleSize": null,
+            "grade": "OH",
+            "top": 12500,
+            "bottom": 14000,
+            "toc": null,
+            "boc": null,
+            "labelXPos": null,
+            "manualLabelDepth": null,
+            "casingLabelFontSize": null,
+            "depthLabelFontSize": null,
+            "depthLabelOffset": null,
+            "showTop": true,
+            "showBottom": true,
+            "__i18n": {
+              "label": "sample.casing.open_hole"
+            },
+            "componentType": "pipe",
+            "rowId": "casing-f2dfc360-d385-4bbd-baf5-bb5db567877c"
+          }
+        ],
+        "tubingData": [
+          {
+            "label": "New tubing",
+            "od": 2.875,
+            "weight": 6.5,
+            "grade": "L80",
+            "idOverride": null,
+            "top": 1400,
+            "bottom": 10000,
+            "labelXPos": null,
+            "manualLabelDepth": null,
+            "labelFontSize": null,
+            "showLabel": true,
+            "rowId": "tubing-7bc668ce-f558-48de-8b1d-4044ee95ef4e",
+            "componentType": "pipe"
+          }
+        ],
+        "drillStringData": [],
+        "equipmentData": [
+          {
+            "depth": 5000,
+            "type": "Packer",
+            "attachToDisplay": "Tubing | #1 New tubing (2.875\")",
+            "attachToHostType": "tubing",
+            "attachToId": "tubing-7bc668ce-f558-48de-8b1d-4044ee95ef4e",
+            "actuationState": "",
+            "integrityStatus": "",
+            "boreSeal": "",
+            "annularSeal": "",
+            "sealByVolume": {},
+            "color": "black",
+            "scale": 1,
+            "label": "New equipment",
+            "labelXPos": null,
+            "manualLabelDepth": null,
+            "labelFontSize": null,
+            "showLabel": true,
+            "rowId": "equipment-1ab0a27b-ec7f-4cd1-8b61-d8194814e5cb"
+          },
+          {
+            "depth": 9431,
+            "type": "Packer",
+            "attachToDisplay": "Tubing | #1 New tubing (2.875\")",
+            "attachToHostType": "tubing",
+            "attachToId": "tubing-7bc668ce-f558-48de-8b1d-4044ee95ef4e",
+            "actuationState": "",
+            "integrityStatus": "",
+            "boreSeal": "",
+            "annularSeal": "",
+            "sealByVolume": {},
+            "color": "black",
+            "scale": 1,
+            "label": "New equipment",
+            "labelXPos": null,
+            "manualLabelDepth": null,
+            "labelFontSize": null,
+            "showLabel": true,
+            "rowId": "equipment-9da3505e-88b2-4fff-8a33-f67c8397e68c"
+          },
+          {
+            "depth": 3000,
+            "type": "Safety Valve",
+            "attachToDisplay": "Tubing | #1 New tubing (2.875\")",
+            "attachToHostType": "tubing",
+            "attachToId": "tubing-7bc668ce-f558-48de-8b1d-4044ee95ef4e",
+            "actuationState": "",
+            "integrityStatus": "",
+            "boreSeal": "",
+            "annularSeal": "",
+            "sealByVolume": {},
+            "color": "black",
+            "scale": 1,
+            "label": "New equipment",
+            "labelXPos": null,
+            "manualLabelDepth": null,
+            "labelFontSize": null,
+            "showLabel": true,
+            "rowId": "equipment-2be61169-13c7-4d48-8da0-800b61bb993e"
+          }
+        ],
+        "horizontalLines": [
+          {
+            "depth": 2500,
+            "label": "Mudline",
+            "color": "steelblue",
+            "fontColor": "steelblue",
+            "fontSize": 11,
+            "lineStyle": "Dash-dot",
+            "labelXPos": 0.9,
+            "show": true,
+            "__i18n": {
+              "label": "sample.line.mudline"
+            },
+            "rowId": "line-66ff3002-36c0-4b75-8df2-234b200da467"
+          },
+          {
+            "depth": 5000,
+            "label": "Formation top",
+            "color": "seagreen",
+            "fontColor": "seagreen",
+            "fontSize": 11,
+            "lineStyle": "Dash-dot",
+            "labelXPos": 0.9,
+            "show": true,
+            "__i18n": {
+              "label": "sample.line.top"
+            },
+            "rowId": "line-f6d49b62-065b-49a0-8569-60c3c8c1d9c6"
+          },
+          {
+            "depth": 8500,
+            "label": "Target zone",
+            "color": "tomato",
+            "fontColor": "tomato",
+            "fontSize": 11,
+            "lineStyle": "Dash-dot",
+            "labelXPos": 0.9,
+            "show": true,
+            "__i18n": {
+              "label": "sample.line.target"
+            },
+            "rowId": "line-008783fa-3808-4b2a-ab44-00eaef184e89"
+          }
+        ],
+        "annotationBoxes": [
+          {
+            "topDepth": 12000,
+            "bottomDepth": 12300,
+            "label": "Reservoir interval",
+            "color": "lightsteelblue",
+            "fontColor": "steelblue",
+            "fontSize": 12,
+            "labelXPos": -0.5,
+            "bandWidth": 1,
+            "opacity": 0.35,
+            "detail": "Main sandstone, porosity 32%",
+            "showDetails": true,
+            "show": true,
+            "__i18n": {
+              "label": "sample.box.reservoir",
+              "detail": "sample.box.detail"
+            },
+            "rowId": "annotation-box-5666ae9b-0dcf-4b7b-8d54-781bb0954c99"
+          },
+          {
+            "topDepth": 6000,
+            "bottomDepth": 8000,
+            "label": "Pay zone",
+            "color": "lightgray",
+            "fontColor": "seagreen",
+            "fontSize": 12,
+            "labelXPos": -0.5,
+            "bandWidth": 1,
+            "opacity": 0.4,
+            "detail": "Monitor pressure drawdown",
+            "showDetails": true,
+            "show": true,
+            "__i18n": {
+              "label": "sample.box.producer",
+              "detail": "sample.box.detail2"
+            },
+            "rowId": "annotation-box-a9e7e8f7-d415-48f8-b382-2a53c5f87768"
+          }
+        ],
+        "userAnnotations": [],
+        "cementPlugs": [
+          {
+            "top": 10000,
+            "bottom": 12500,
+            "type": "Cement",
+            "targetMode": "Auto (innermost)",
+            "attachToRow": "#4 Production liner (7.000\")",
+            "label": "P&A Cement",
+            "color": "lightgray",
+            "hatchStyle": "None",
+            "manualWidth": null,
+            "show": false,
+            "__i18n": {
+              "label": "sample.plug.label1"
+            },
+            "rowId": "plug-117f02d0-d1e9-46cf-a489-6b5e4447899b",
+            "attachToId": "casing-6a96ed57-b4e0-4ebd-a5ba-4cf1578b76e4"
+          },
+          {
+            "top": 13000,
+            "bottom": 13100,
+            "type": "Cement",
+            "targetMode": "Auto (innermost)",
+            "attachToRow": "#4 Production liner (7.000\")",
+            "label": "P&A Cement 2",
+            "color": "lightgray",
+            "hatchStyle": "None",
+            "manualWidth": null,
+            "show": true,
+            "__i18n": {
+              "label": "sample.plug.label2"
+            },
+            "rowId": "plug-c3d64265-1400-43d1-bf59-8af0e5a4c7a4",
+            "attachToId": "casing-6a96ed57-b4e0-4ebd-a5ba-4cf1578b76e4"
+          }
+        ],
+        "annulusFluids": [],
+        "markers": [
+          {
+            "top": 12000,
+            "bottom": 12400,
+            "type": "Perforation",
+            "attachToRow": "#4 Production liner (7.000\")",
+            "side": "Both sides",
+            "color": "black",
+            "scale": 1,
+            "label": "Perforation",
+            "show": true,
+            "__i18n": {
+              "label": "sample.marker.perf"
+            },
+            "rowId": "marker-5576cb1d-4eea-41ea-b017-ed89c578e5d8",
+            "attachToId": "casing-6a96ed57-b4e0-4ebd-a5ba-4cf1578b76e4",
+            "attachToHostType": "casing"
+          },
+          {
+            "top": 8000,
+            "bottom": 8100,
+            "type": "Leak",
+            "attachToRow": "#1 New tubing (2.875\")",
+            "side": "Both sides",
+            "color": "maroon",
+            "scale": 1,
+            "label": "Leak1",
+            "show": true,
+            "__i18n": {},
+            "rowId": "marker-fea30974-240f-4ea8-97a4-64137988fc97",
+            "attachToId": "tubing-7bc668ce-f558-48de-8b1d-4044ee95ef4e",
+            "attachToHostType": "tubing"
+          },
+          {
+            "top": 4000,
+            "bottom": 4000,
+            "type": "Leak",
+            "attachToHostType": "tubing",
+            "attachToRow": "#1 New tubing (2.875\")",
+            "side": "Both sides",
+            "color": "maroon",
+            "scale": 1,
+            "label": "Leak1",
+            "show": true,
+            "rowId": "marker-c01bb2e5-1523-4813-9883-e113f8ffd000",
+            "attachToId": "tubing-7bc668ce-f558-48de-8b1d-4044ee95ef4e"
+          }
+        ],
+        "topologySources": [],
+        "trajectory": [
+          {
+            "md": 0,
+            "inc": 0,
+            "azi": 0,
+            "comment": "Surface",
+            "rowId": "trajectory-d40622bb-bcaf-4ad8-8758-483a352927fb"
+          }
+        ]
+      },
+      "config": {
+        "operationPhase": "production",
+        "datumDepth": null,
+        "colorPalette": "Tableau 10",
+        "showCement": true,
+        "showDepthCrossSection": false,
+        "cursorDepth": null,
+        "showDepthCursor": true,
+        "showMagnifier": false,
+        "magnifierZoomLevel": 2,
+        "depthCursorDirectionalMode": "tvd",
+        "showPhysicsDebug": false,
+        "cementColor": "lightgray",
+        "cementHatchEnabled": false,
+        "cementHatchStyle": "none",
+        "plotTitle": "",
+        "figHeight": 800,
+        "widthMultiplier": 3.5,
+        "canvasWidthMultiplier": 1,
+        "lockAspectRatio": true,
+        "viewMode": "vertical",
+        "annotationToolMode": "select",
+        "xExaggeration": 1,
+        "intervalCalloutStandoffPx": 64,
+        "directionalCasingArrowMode": "normal-locked",
+        "verticalSectionMode": "auto",
+        "verticalSectionAzimuth": 0,
+        "crossoverEpsilon": 30,
+        "crossoverPixelHalfHeight": 5
+      }
+    }
+  ],
+  "meta": {
+    "schemaVersion": "3.0",
+    "timestamp": "2026-02-26T02:48:47.864Z",
+    "source": "CasingSchematicPlotter",
+    "author": ""
+  }
+}

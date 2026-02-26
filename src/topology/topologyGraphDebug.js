@@ -6,6 +6,7 @@ import {
 const GRAPH_SCOPE_SET = new Set(['min_path', 'spof', 'active_flow', 'selected_barrier']);
 const GRAPH_LANE_ORDER = Object.freeze([
   'TUBING_INNER',
+  'TUBING_ANNULUS',
   'BORE',
   'ANNULUS_A',
   'ANNULUS_B',
@@ -31,6 +32,7 @@ const DENSE_KIND_LABEL_THRESHOLD = 4;
 
 const NODE_KIND_LABEL_BY_TOKEN = Object.freeze({
   TUBING_INNER: 'Tubing Inner',
+  TUBING_ANNULUS: 'Tubing Annulus',
   BORE: 'Bore (Legacy)',
   ANNULUS_A: 'Annulus A',
   ANNULUS_B: 'Annulus B',

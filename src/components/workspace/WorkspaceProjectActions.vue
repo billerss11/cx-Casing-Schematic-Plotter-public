@@ -39,6 +39,7 @@ const isExcelExportDialogVisible = ref(false);
 const isReplaceProjectConfirmVisible = ref(false);
 const isAppendWellsDialogVisible = ref(false);
 const isDeleteWellConfirmVisible = ref(false);
+const isResetConfirmVisible = ref(false);
 const languageTick = ref(0);
 const newWellName = ref('');
 const selectedExcelExportScope = ref(EXCEL_EXPORT_SCOPE_ACTIVE_WELL);
@@ -77,6 +78,8 @@ const labels = computed(() => {
     exportDialogLabel: t('ui.export_excel_scope_label'),
     replaceConfirmTitle: t('ui.project_load_replace_confirm_title'),
     replaceConfirmMessage: t('ui.project_load_replace_confirm_body'),
+    resetConfirmTitle: t('ui.reset_confirm_title'),
+    resetConfirmMessage: t('ui.reset_confirm_body'),
     appendWellsTitle: t('ui.import_wells_dialog_title'),
     appendWellsLabel: t('ui.import_wells_dialog_label'),
     appendWellsSelection: t('ui.import_wells_selected_count', { count: selectedImportedWellIds.value.length }),
@@ -118,7 +121,7 @@ const projectActionItems = computed(() => {
     {
       label: t('ui.reset'),
       icon: 'pi pi-refresh',
-      command: resetData
+      command: openResetConfirm
     }
   ];
 });
@@ -527,6 +530,19 @@ function closeDeleteWellConfirm() {
   isDeleteWellConfirmVisible.value = false;
 }
 
+function openResetConfirm() {
+  isResetConfirmVisible.value = true;
+}
+
+function closeResetConfirm() {
+  isResetConfirmVisible.value = false;
+}
+
+function confirmResetData() {
+  resetData();
+  closeResetConfirm();
+}
+
 function confirmDeleteWell() {
   if (!canDeleteActiveWell.value) {
     closeDeleteWellConfirm();
@@ -778,6 +794,25 @@ onBeforeUnmount(() => {
         <div class="workspace-project-actions__dialog-footer">
           <Button text :label="labels.cancel" @click="closeNewWellDialog" />
           <Button :label="labels.confirm" :disabled="!canCreateNewWell" @click="confirmCreateNewWell" />
+        </div>
+      </template>
+    </Dialog>
+
+    <Dialog
+      v-model:visible="isResetConfirmVisible"
+      modal
+      :draggable="false"
+      :header="labels.resetConfirmTitle"
+      :style="{ width: 'min(92vw, 30rem)' }"
+    >
+      <div class="workspace-project-actions__dialog-body">
+        <p class="workspace-project-actions__dialog-label">{{ labels.resetConfirmMessage }}</p>
+      </div>
+
+      <template #footer>
+        <div class="workspace-project-actions__dialog-footer">
+          <Button text :label="labels.cancel" @click="closeResetConfirm" />
+          <Button severity="danger" :label="labels.confirm" @click="confirmResetData" />
         </div>
       </template>
     </Dialog>

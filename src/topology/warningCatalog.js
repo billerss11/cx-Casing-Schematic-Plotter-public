@@ -60,7 +60,7 @@ const WARNING_METADATA_BY_CODE = Object.freeze({
     [TOPOLOGY_WARNING_CODES.INVALID_VOLUME_SEAL_OVERRIDE_KEY]: Object.freeze({
         category: TOPOLOGY_WARNING_CATEGORIES.EQUIPMENT,
         fields: ['sealByVolume'],
-        recommendation: 'Use supported volume keys only: TUBING_INNER (legacy BORE), ANNULUS_A, ANNULUS_B, ANNULUS_C, ANNULUS_D, FORMATION_ANNULUS.'
+        recommendation: 'Use supported volume keys only: TUBING_INNER (legacy BORE), TUBING_ANNULUS (alias PRIMARY_ANNULUS), ANNULUS_A, ANNULUS_B, ANNULUS_C, ANNULUS_D, FORMATION_ANNULUS.'
     }),
     [TOPOLOGY_WARNING_CODES.INVALID_VOLUME_SEAL_OVERRIDE_VALUE]: Object.freeze({
         category: TOPOLOGY_WARNING_CATEGORIES.EQUIPMENT,
@@ -139,7 +139,7 @@ const WARNING_METADATA_BY_CODE = Object.freeze({
     }),
     [TOPOLOGY_WARNING_CODES.SCENARIO_SOURCE_UNSUPPORTED_VOLUME]: Object.freeze({
         category: TOPOLOGY_WARNING_CATEGORIES.SOURCE,
-        recommendation: 'Use supported MVP volume keys: TUBING_INNER (legacy BORE), ANNULUS_A, ANNULUS_B, ANNULUS_C, ANNULUS_D, FORMATION_ANNULUS.'
+        recommendation: 'Use supported MVP volume keys: TUBING_INNER (legacy BORE), TUBING_ANNULUS (aliases PRIMARY_ANNULUS/PRODUCTION_ANNULUS), ANNULUS_A, ANNULUS_B, ANNULUS_C, ANNULUS_D, FORMATION_ANNULUS.'
     }),
     [TOPOLOGY_WARNING_CODES.SCENARIO_SOURCE_MISSING_DEPTH_RANGE]: Object.freeze({
         category: TOPOLOGY_WARNING_CATEGORIES.SOURCE,
@@ -161,7 +161,7 @@ const WARNING_METADATA_BY_CODE = Object.freeze({
     [TOPOLOGY_WARNING_CODES.SCENARIO_BREAKOUT_UNSUPPORTED_VOLUME_PAIR]: Object.freeze({
         category: TOPOLOGY_WARNING_CATEGORIES.SOURCE,
         fields: ['fromVolumeKey', 'toVolumeKey'],
-        recommendation: 'Use supported volume keys for breakout pairs: TUBING_INNER (legacy BORE), ANNULUS_A, ANNULUS_B, ANNULUS_C, ANNULUS_D, FORMATION_ANNULUS.'
+        recommendation: 'Use supported volume keys for breakout pairs: TUBING_INNER (legacy BORE), TUBING_ANNULUS (aliases PRIMARY_ANNULUS/PRODUCTION_ANNULUS), ANNULUS_A, ANNULUS_B, ANNULUS_C, ANNULUS_D, FORMATION_ANNULUS.'
     }),
     [TOPOLOGY_WARNING_CODES.SCENARIO_BREAKOUT_MISSING_DEPTH_RANGE]: Object.freeze({
         category: TOPOLOGY_WARNING_CATEGORIES.SOURCE,

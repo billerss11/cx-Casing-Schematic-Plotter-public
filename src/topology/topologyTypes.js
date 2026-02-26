@@ -22,6 +22,7 @@ export const MODELED_ANNULUS_VOLUME_SLOTS = Object.freeze([
 
 export const MODELED_VOLUME_KINDS = Object.freeze([
     NODE_KIND_TUBING_INNER,
+    NODE_KIND_TUBING_ANNULUS,
     ...MODELED_ANNULUS_VOLUME_SLOTS.map((annulusSlot) => annulusSlot.kind)
 ]);
 
@@ -86,9 +87,14 @@ export function normalizeSourceVolumeKind(value) {
     if (
         token === NODE_KIND_TUBING_ANNULUS
         || token === 'TUBINGANNULUS'
+        || token === 'TBG_ANNULUS'
+        || token === 'PRIMARY_ANNULUS'
+        || token === 'PRODUCTION_ANNULUS'
+        || token === 'PROD_ANNULUS'
         || token.includes('TUBING_ANNULUS')
+        || token.includes('PRIMARY_ANNULUS')
     ) {
-        return NODE_KIND_ANNULUS_A;
+        return NODE_KIND_TUBING_ANNULUS;
     }
     if (
         token === NODE_KIND_LEGACY_BORE
@@ -106,6 +112,7 @@ export function normalizeSourceVolumeKind(value) {
     }
     if (
         token === NODE_KIND_ANNULUS_A
+        || token === 'CASING_ANNULUS_A'
         || token === 'ANNULUSA'
         || token === 'A_ANNULUS'
         || token === 'A_ANNULUS_A'

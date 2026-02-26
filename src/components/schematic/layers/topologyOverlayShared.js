@@ -1,12 +1,13 @@
 import {
-  resolveAnnulusLayerByIndex,
   resolveBoreLayer,
   resolveFormationAnnulusLayer
 } from '@/utils/physicsLayers.js';
+import { resolveAnnulusLayerForVolumeKind } from '@/topology/annulusVolumeMapping.js';
 
 export const TOPOLOGY_OVERLAY_EPSILON = 1e-4;
 export const TRACKED_VOLUME_NODE_KINDS = Object.freeze([
   'TUBING_INNER',
+  'TUBING_ANNULUS',
   'BORE',
   'ANNULUS_A',
   'ANNULUS_B',
@@ -103,20 +104,14 @@ export function resolveNodeLayer(node, stack = []) {
     return resolveBoreLayer(stack);
   }
 
-  if (node?.kind === 'ANNULUS_A') {
-    return resolveAnnulusLayerByIndex(stack, 0);
-  }
-
-  if (node?.kind === 'ANNULUS_B') {
-    return resolveAnnulusLayerByIndex(stack, 1);
-  }
-
-  if (node?.kind === 'ANNULUS_C') {
-    return resolveAnnulusLayerByIndex(stack, 2);
-  }
-
-  if (node?.kind === 'ANNULUS_D') {
-    return resolveAnnulusLayerByIndex(stack, 3);
+  if (
+    node?.kind === 'TUBING_ANNULUS'
+    || node?.kind === 'ANNULUS_A'
+    || node?.kind === 'ANNULUS_B'
+    || node?.kind === 'ANNULUS_C'
+    || node?.kind === 'ANNULUS_D'
+  ) {
+    return resolveAnnulusLayerForVolumeKind(stack, node?.kind);
   }
 
   if (node?.kind === 'FORMATION_ANNULUS') {

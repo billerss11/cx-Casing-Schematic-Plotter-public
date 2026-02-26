@@ -100,6 +100,15 @@ const TOPOLOGY_SOURCE_TYPE_OPTIONS = Object.freeze([
     SOURCE_KIND_SCENARIO
 ]);
 const TOPOLOGY_SOURCE_VOLUME_OPTIONS = TOPOLOGY_VOLUME_KINDS;
+const TOPOLOGY_SOURCE_VOLUME_CELL_LABELS = Object.freeze({
+    TUBING_INNER: 'TUBING_INNER (legacy BORE)',
+    TUBING_ANNULUS: 'TUBING_ANNULUS (between tubing and first casing)',
+    ANNULUS_A: 'ANNULUS_A (first casing annulus)',
+    ANNULUS_B: 'ANNULUS_B',
+    ANNULUS_C: 'ANNULUS_C',
+    ANNULUS_D: 'ANNULUS_D',
+    FORMATION_ANNULUS: 'FORMATION_ANNULUS'
+});
 const MARKER_HOST_TYPE_OPTIONS = Object.freeze([
     PIPE_HOST_TYPE_CASING,
     PIPE_HOST_TYPE_TUBING
@@ -133,6 +142,17 @@ function tf(key, fallback) {
 function getRows(schema) {
     const rows = schema?.getData?.();
     return Array.isArray(rows) ? rows : [];
+}
+
+function buildTopologySourceVolumeRenderer() {
+    return function topologySourceVolumeRenderer(instance, td, row, col, prop, value, cellProperties) {
+        Handsontable.renderers.TextRenderer(instance, td, row, col, prop, value, cellProperties);
+        const token = String(value ?? '').trim().toUpperCase();
+        if (!token) return;
+        const label = TOPOLOGY_SOURCE_VOLUME_CELL_LABELS[token];
+        if (!label) return;
+        td.textContent = label;
+    };
 }
 
 function toFiniteNumber(value) {
@@ -880,6 +900,7 @@ function buildTableSchema(type, domainState) {
     }
 
     if (type === 'topologySource') {
+        const topologyVolumeRenderer = buildTopologySourceVolumeRenderer();
         return {
             getData: () => domainState.topologySources,
             prepareData: (rows) => rows.map((row) => ({
@@ -911,21 +932,24 @@ function buildTableSchema(type, domainState) {
                     type: 'dropdown',
                     source: TOPOLOGY_SOURCE_VOLUME_OPTIONS,
                     strict: false,
-                    allowInvalid: true
+                    allowInvalid: true,
+                    renderer: topologyVolumeRenderer
                 },
                 {
                     data: 'fromVolumeKey',
                     type: 'dropdown',
                     source: TOPOLOGY_SOURCE_VOLUME_OPTIONS,
                     strict: false,
-                    allowInvalid: true
+                    allowInvalid: true,
+                    renderer: topologyVolumeRenderer
                 },
                 {
                     data: 'toVolumeKey',
                     type: 'dropdown',
                     source: TOPOLOGY_SOURCE_VOLUME_OPTIONS,
                     strict: false,
-                    allowInvalid: true
+                    allowInvalid: true,
+                    renderer: topologyVolumeRenderer
                 },
                 { data: 'label', type: 'text' },
                 { data: 'show', type: 'checkbox', className: 'htCenter' }
@@ -950,6 +974,7 @@ function buildTableSchema(type, domainState) {
     }
 
     if (type === 'topologyBreakout') {
+        const topologyVolumeRenderer = buildTopologySourceVolumeRenderer();
         return {
             getData: () => filterScenarioBreakoutRows(domainState.topologySources),
             prepareData: (rows) => rows.map((row) => ({
@@ -972,14 +997,16 @@ function buildTableSchema(type, domainState) {
                     type: 'dropdown',
                     source: TOPOLOGY_SOURCE_VOLUME_OPTIONS,
                     strict: false,
-                    allowInvalid: true
+                    allowInvalid: true,
+                    renderer: topologyVolumeRenderer
                 },
                 {
                     data: 'toVolumeKey',
                     type: 'dropdown',
                     source: TOPOLOGY_SOURCE_VOLUME_OPTIONS,
                     strict: false,
-                    allowInvalid: true
+                    allowInvalid: true,
+                    renderer: topologyVolumeRenderer
                 },
                 { data: 'label', type: 'text' },
                 { data: 'show', type: 'checkbox', className: 'htCenter' }
