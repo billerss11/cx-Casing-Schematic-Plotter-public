@@ -48,6 +48,7 @@ const ANNULUS_NODE_KIND_BY_SLOT_INDEX = Object.freeze([
     'ANNULUS_C',
     'ANNULUS_D'
 ]);
+const TOPOLOGY_NODE_KIND_TUBING_ANNULUS = 'TUBING_ANNULUS';
 
 const [AUTO_FORMATION_ANNULUS, AUTO_PRODUCTION_ANNULUS, AUTO_A_ANNULUS, AUTO_B_ANNULUS, AUTO_C_ANNULUS] = FLUID_PLACEMENT_AUTO_OPTIONS;
 
@@ -506,9 +507,20 @@ export function resolveHangers(casingRows = [], options = {}) {
     return barriers;
 }
 
-function resolveModeledAnnulusKindBySlotIndex(slotIndex, isFormation = false) {
-    if (Number.isInteger(slotIndex) && slotIndex >= 0 && slotIndex < ANNULUS_NODE_KIND_BY_SLOT_INDEX.length) {
-        return ANNULUS_NODE_KIND_BY_SLOT_INDEX[slotIndex];
+function resolveModeledAnnulusKindBySlotIndex(slotIndex, options = {}) {
+    const isFormation = options?.isFormation === true;
+    const hasTubingAnnulus = options?.hasTubingAnnulus === true;
+    if (!Number.isInteger(slotIndex) || slotIndex < 0) {
+        return isFormation ? 'FORMATION_ANNULUS' : null;
+    }
+
+    if (hasTubingAnnulus && slotIndex === 0) {
+        return TOPOLOGY_NODE_KIND_TUBING_ANNULUS;
+    }
+
+    const adjustedSlotIndex = hasTubingAnnulus ? slotIndex - 1 : slotIndex;
+    if (adjustedSlotIndex >= 0 && adjustedSlotIndex < ANNULUS_NODE_KIND_BY_SLOT_INDEX.length) {
+        return ANNULUS_NODE_KIND_BY_SLOT_INDEX[adjustedSlotIndex];
     }
     return isFormation ? 'FORMATION_ANNULUS' : null;
 }
@@ -538,6 +550,9 @@ function resolvePackerSealSlotForHost(depth, hostType, hostRow, options = {}) {
     const outerEnvironmentRadius = resolveOuterEnvironmentRadius(activeSteel, activeOpenHoles, depth);
     const annuli = buildAnnulusSlots(activeSteel, outerEnvironmentRadius);
     if (annuli.length === 0) return null;
+    const hasTubingAnnulus = annuli.some((slot) =>
+        Number(slot?.index) === 0 && slot?.innerPipe?.pipeType === PIPE_TYPE_TUBING
+    );
 
     const hostPipeType = hostType === PIPE_HOST_TYPE_TUBING
         ? PIPE_TYPE_TUBING
@@ -558,7 +573,10 @@ function resolvePackerSealSlotForHost(depth, hostType, hostRow, options = {}) {
     const sealSlotIndex = Number.isInteger(Number(sealSlot.index))
         ? Number(sealSlot.index)
         : null;
-    const sealNodeKind = resolveModeledAnnulusKindBySlotIndex(sealSlotIndex, sealSlot?.isFormation === true);
+    const sealNodeKind = resolveModeledAnnulusKindBySlotIndex(sealSlotIndex, {
+        hasTubingAnnulus,
+        isFormation: sealSlot?.isFormation === true
+    });
     const sealInnerDiameter = Number.isFinite(sealSlot?.innerRadius)
         ? Number(sealSlot.innerRadius) * 2
         : null;

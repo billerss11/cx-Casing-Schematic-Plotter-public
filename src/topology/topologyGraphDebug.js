@@ -32,12 +32,12 @@ const DENSE_KIND_LABEL_THRESHOLD = 4;
 
 const NODE_KIND_LABEL_BY_TOKEN = Object.freeze({
   TUBING_INNER: 'Tubing Inner',
-  TUBING_ANNULUS: 'Tubing Annulus',
+  TUBING_ANNULUS: 'Inner Annulus (Tubing-Casing)',
   BORE: 'Bore (Legacy)',
-  ANNULUS_A: 'Annulus A',
-  ANNULUS_B: 'Annulus B',
-  ANNULUS_C: 'Annulus C',
-  ANNULUS_D: 'Annulus D',
+  ANNULUS_A: 'Outer Annulus A (Casing-Casing)',
+  ANNULUS_B: 'Outer Annulus B',
+  ANNULUS_C: 'Outer Annulus C',
+  ANNULUS_D: 'Outer Annulus D',
   FORMATION_ANNULUS: 'Formation Annulus',
   SURFACE: 'Surface'
 });

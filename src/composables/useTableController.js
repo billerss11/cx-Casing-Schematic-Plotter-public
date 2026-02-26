@@ -102,11 +102,11 @@ const TOPOLOGY_SOURCE_TYPE_OPTIONS = Object.freeze([
 const TOPOLOGY_SOURCE_VOLUME_OPTIONS = TOPOLOGY_VOLUME_KINDS;
 const TOPOLOGY_SOURCE_VOLUME_CELL_LABELS = Object.freeze({
     TUBING_INNER: 'TUBING_INNER (legacy BORE)',
-    TUBING_ANNULUS: 'TUBING_ANNULUS (between tubing and first casing)',
-    ANNULUS_A: 'ANNULUS_A (first casing annulus)',
-    ANNULUS_B: 'ANNULUS_B',
-    ANNULUS_C: 'ANNULUS_C',
-    ANNULUS_D: 'ANNULUS_D',
+    TUBING_ANNULUS: 'TUBING_ANNULUS (inner annulus: tubing-to-first-casing)',
+    ANNULUS_A: 'ANNULUS_A (outer annulus A: first casing-to-casing)',
+    ANNULUS_B: 'ANNULUS_B (outer annulus B)',
+    ANNULUS_C: 'ANNULUS_C (outer annulus C)',
+    ANNULUS_D: 'ANNULUS_D (outer annulus D)',
     FORMATION_ANNULUS: 'FORMATION_ANNULUS'
 });
 const MARKER_HOST_TYPE_OPTIONS = Object.freeze([
