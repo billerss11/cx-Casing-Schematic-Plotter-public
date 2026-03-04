@@ -33,6 +33,13 @@ function setRectAttributes(rect, x, y, width, height) {
   setAttributeIfChanged(rect, 'height', height);
 }
 
+function toFinitePointer(value) {
+  const x = Number(value?.x);
+  const y = Number(value?.y);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  return { x, y };
+}
+
 function resolveMagnifierWindowPosition(pointerX, pointerY, svgWidth, svgHeight, options) {
   const {
     windowWidth,
@@ -98,12 +105,20 @@ export function useMagnifierOverlayDom(options = {}) {
       return;
     }
 
-    const localPointer = pointerResolver.resolveFromClient(
+    const fallbackLocalPointer = pointerResolver.resolveFromClient(
       toFiniteNumber(client?.x),
       toFiniteNumber(client?.y),
       unref(options.svgWidth),
       unref(options.svgHeight)
     );
+    const resolvedPointer = typeof options.resolvePointerFromClient === 'function'
+      ? options.resolvePointerFromClient({
+          clientX: toFiniteNumber(client?.x),
+          clientY: toFiniteNumber(client?.y),
+          localPointer: fallbackLocalPointer
+        })
+      : null;
+    const localPointer = toFinitePointer(resolvedPointer) ?? fallbackLocalPointer;
     if (!localPointer) {
       pointerVisible = false;
       return;

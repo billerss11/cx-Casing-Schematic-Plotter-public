@@ -9,6 +9,12 @@ const viewConfigStore = useViewConfigStore();
 const config = viewConfigStore.config;
 
 const isDirectionalView = computed(() => config.viewMode === 'directional');
+const isCameraTransformEnabledForCurrentView = computed(() => (
+  viewConfigStore.uiState?.useCameraTransform === true &&
+  (config.viewMode === 'directional'
+    ? viewConfigStore.uiState?.cameraTransformDirectional === true
+    : viewConfigStore.uiState?.cameraTransformVertical === true)
+));
 const canvasWidthMin = computed(() => (isDirectionalView.value ? 0.1 : 1.0));
 
 function setConfigValue(key, value) {
@@ -238,6 +244,7 @@ onBeforeUnmount(() => {
             :min="600"
             :max="4000"
             :step="50"
+            :disabled="isCameraTransformEnabledForCurrentView"
             class="w-100"
             @change="handleFigHeightSliderChange"
             @slideend="handleFigHeightSliderCommit"
@@ -245,7 +252,7 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="mb-2 d-flex align-items-center gap-2" v-show="isDirectionalView">
-          <Checkbox input-id="lockAspectRatio" v-model="lockAspectRatioModel" data-vue-owned="true" binary />
+          <Checkbox input-id="lockAspectRatio" v-model="lockAspectRatioModel" data-vue-owned="true" binary :disabled="isCameraTransformEnabledForCurrentView" />
           <label for="lockAspectRatio" data-i18n="ui.lock_aspect_ratio">
             Auto-Fit Width (Lock Aspect Ratio)
           </label>
@@ -260,6 +267,7 @@ onBeforeUnmount(() => {
             :min="1.5"
             :max="10"
             :step="0.5"
+            :disabled="isCameraTransformEnabledForCurrentView"
             class="w-100"
             @change="handleWidthMultiplierSliderChange"
             @slideend="handleWidthMultiplierSliderCommit"
@@ -276,6 +284,7 @@ onBeforeUnmount(() => {
             :min="canvasWidthMin"
             :max="3.0"
             :step="0.1"
+            :disabled="isCameraTransformEnabledForCurrentView"
             class="w-100"
             @change="handleCanvasWidthSliderChange"
             @slideend="handleCanvasWidthSliderCommit"
@@ -310,6 +319,7 @@ onBeforeUnmount(() => {
             :min="0.1"
             :max="1.0"
             :step="0.01"
+            :disabled="isCameraTransformEnabledForCurrentView"
             class="w-100"
             @change="handleXExaggerationSliderChange"
             @slideend="handleXExaggerationSliderCommit"

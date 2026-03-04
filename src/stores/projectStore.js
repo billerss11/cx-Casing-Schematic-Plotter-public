@@ -368,6 +368,7 @@ export const useProjectStore = defineStore('project', () => {
         withDirtyTrackingSuspended(() => {
             finishEditingAllHotTables();
             resetTransientStateForWellSwitch();
+            viewConfigStore.resetCameraViewsForWellSwitch();
 
             state.projectName = normalizeProjectName(normalized.projectName, 'Project');
             state.projectAuthor = normalizeProjectAuthor(normalized.projectAuthor, '');
@@ -437,6 +438,7 @@ export const useProjectStore = defineStore('project', () => {
             finishEditingAllHotTables();
             syncActiveWellData();
             resetTransientStateForWellSwitch();
+            viewConfigStore.resetCameraViewsForWellSwitch();
 
             state.activeWellId = nextWell.id;
             hydrateRuntimeFromWell(nextWell);
@@ -557,6 +559,7 @@ export const useProjectStore = defineStore('project', () => {
         if (deletingActiveWell) {
             withDirtyTrackingSuspended(() => {
                 resetTransientStateForWellSwitch();
+                viewConfigStore.resetCameraViewsForWellSwitch();
                 const remainingWells = state.wells.filter((well) => well.id !== targetWell.id);
                 state.wells = remainingWells;
 
@@ -620,6 +623,7 @@ export const useProjectStore = defineStore('project', () => {
 
         finishEditingAllHotTables();
         resetTransientStateForWellSwitch();
+        viewConfigStore.resetCameraViewsForWellSwitch();
         hydrateRuntimeWellData(data);
         hydrateRuntimeWellConfig(config);
         syncActiveWellData();

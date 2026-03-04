@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from 'vue';
+import { resolveEquipmentTypeSemantics } from '@/components/schematic/layers/equipmentModelShared.js';
 
 const EPSILON = 1e-6;
 const SAFETY_VALVE_MIN_HALF_HEIGHT = 3;
@@ -35,15 +36,6 @@ function isActiveEquipment(index) {
     Number(props.activeEntity?.id) === index;
 }
 
-function normalizeEquipmentType(type) {
-  const normalized = String(type ?? '').trim().toLowerCase();
-  if (normalized === 'packer') return 'packer';
-  if (normalized === 'safety valve' || normalized === 'safety_valve' || normalized === 'safety-valve') {
-    return 'safety-valve';
-  }
-  return '';
-}
-
 function resolveSafetyValveHalfHeight(innerRadiusPx, scaleFactor) {
   const rawHalfHeight = innerRadiusPx * 0.55 * scaleFactor;
   if (!Number.isFinite(rawHalfHeight) || rawHalfHeight <= 0) return SAFETY_VALVE_MIN_HALF_HEIGHT;
@@ -61,9 +53,9 @@ const shapes = computed(() => {
     const isActive = isActiveEquipment(entity.id);
     const color = String(item?.color ?? 'black');
     const scaleFactor = Number.isFinite(Number(item?.scale)) && Number(item.scale) > 0 ? Number(item.scale) : 1;
-    const type = normalizeEquipmentType(item?.type);
+    const semantics = resolveEquipmentTypeSemantics(item?.type);
 
-    if (type === 'packer') {
+    if (semantics.typeKey === 'packer') {
       const isOrphaned = item?.isOrphaned === true;
       const innerRadius = Number(item?.sealInnerRadius ?? item?.tubingOuterRadius);
       const outerRadius = Number(item?.sealOuterRadius ?? item?.parentInnerRadius);
@@ -97,7 +89,7 @@ const shapes = computed(() => {
         });
       }
       return;
-    } else if (type === 'safety-valve') {
+    } else if (semantics.isSafetyValve) {
       const innerRadius = Number(item?.tubingInnerRadius);
       if (!Number.isFinite(innerRadius) || innerRadius <= EPSILON) return;
       const innerRadiusPx = innerRadius * scale;

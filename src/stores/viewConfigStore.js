@@ -20,6 +20,7 @@ import {
     resolveDirectionalSvgWidthFromMultiplier,
     resolveDirectionalWidthMultiplierFromSvgWidth
 } from '@/utils/directionalSizing.js';
+import { clampZoom } from '@/utils/svgTransformMath.js';
 
 const MIN_CANVAS_WIDTH_MULTIPLIER = 0.1;
 const DEFAULT_CANVAS_WIDTH_MULTIPLIER = 1.0;
@@ -37,6 +38,8 @@ const DEPTH_CURSOR_DIRECTIONAL_MODE_TVD = 'tvd';
 const DEPTH_CURSOR_DIRECTIONAL_MODE_MD = 'md';
 const OPERATION_PHASE_PRODUCTION = 'production';
 const OPERATION_PHASE_DRILLING = 'drilling';
+const VERTICAL_CAMERA_ZOOM_MIN = 0.25;
+const VERTICAL_CAMERA_ZOOM_MAX = 4;
 
 const VERTICAL_SECTION_PRESETS = Object.freeze({
     north: 0,
@@ -103,6 +106,36 @@ function normalizeAnnotationToolMode(value) {
         : USER_ANNOTATION_TOOL_MODE_SELECT;
 }
 
+function createIdentityCameraState() {
+    return {
+        scale: 1,
+        translateX: 0,
+        translateY: 0
+    };
+}
+
+function normalizeCameraPanCoordinate(value, fallback = 0) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return fallback;
+    return numeric;
+}
+
+function normalizeVerticalCameraScale(value, fallback = 1) {
+    return clampZoom(value, {
+        min: VERTICAL_CAMERA_ZOOM_MIN,
+        max: VERTICAL_CAMERA_ZOOM_MAX,
+        fallback
+    });
+}
+
+function normalizeDirectionalCameraScale(value, fallback = 1) {
+    return clampZoom(value, {
+        min: VERTICAL_CAMERA_ZOOM_MIN,
+        max: VERTICAL_CAMERA_ZOOM_MAX,
+        fallback
+    });
+}
+
 function createDefaultViewUiState() {
     return {
         cachedDirectionalWidth: DIRECTIONAL_DEFAULT_CANVAS_WIDTH_MULTIPLIER,
@@ -113,7 +146,13 @@ function createDefaultViewUiState() {
         lastDirectionalAutoFitSignature: null,
         suppressNextDirectionalAutoFit: false,
         lastVsSelection: VERTICAL_SECTION_MODE_AUTO,
-        directionalDataAspectRatio: 1
+        directionalDataAspectRatio: 1,
+        useCameraTransform: false,
+        cameraTransformVertical: false,
+        cameraTransformDirectional: false,
+        directionalFitToDataRequestCount: 0,
+        verticalCamera: createIdentityCameraState(),
+        directionalCamera: createIdentityCameraState()
     };
 }
 
@@ -230,6 +269,19 @@ export const useViewConfigStore = defineStore('viewConfig', () => {
     const config = reactive(createDefaultViewConfig());
     const uiState = reactive(createDefaultViewUiState());
 
+    function normalizeMetricsDelta(value, fallback = 1) {
+        const parsed = Number(value);
+        if (!Number.isFinite(parsed)) return fallback;
+        return Math.max(0, Math.round(parsed));
+    }
+
+    function setCameraFlag(key, value) {
+        const nextValue = value === true;
+        if (uiState[key] === nextValue) return false;
+        uiState[key] = nextValue;
+        return true;
+    }
+
     function setColorPalette(value) {
         return setConfigValue('colorPalette', value);
     }
@@ -302,6 +354,177 @@ export const useViewConfigStore = defineStore('viewConfig', () => {
         if (Object.is(config[key], value)) return false;
         config[key] = value;
         return true;
+    }
+
+    function setUseCameraTransform(value) {
+        setCameraFlag('useCameraTransform', value);
+        return uiState.useCameraTransform;
+    }
+
+    function setCameraTransformVertical(value) {
+        setCameraFlag('cameraTransformVertical', value);
+        return uiState.cameraTransformVertical;
+    }
+
+    function setCameraTransformDirectional(value) {
+        setCameraFlag('cameraTransformDirectional', value);
+        return uiState.cameraTransformDirectional;
+    }
+
+    function setVerticalCameraState(camera = {}) {
+        const current = uiState.verticalCamera ?? createIdentityCameraState();
+        const nextScale = normalizeVerticalCameraScale(camera?.scale, current.scale);
+        const nextTranslateX = normalizeCameraPanCoordinate(camera?.translateX, current.translateX);
+        const nextTranslateY = normalizeCameraPanCoordinate(camera?.translateY, current.translateY);
+        const changed = !Object.is(current.scale, nextScale) ||
+            !Object.is(current.translateX, nextTranslateX) ||
+            !Object.is(current.translateY, nextTranslateY);
+        if (!changed) return current;
+
+        current.scale = nextScale;
+        current.translateX = nextTranslateX;
+        current.translateY = nextTranslateY;
+        uiState.verticalCamera = current;
+        return current;
+    }
+
+    function setVerticalCameraPan(camera = {}) {
+        const current = uiState.verticalCamera ?? createIdentityCameraState();
+        return setVerticalCameraState({
+            scale: current.scale,
+            translateX: camera?.translateX,
+            translateY: camera?.translateY
+        });
+    }
+
+    function setVerticalCameraZoom(scale = 1) {
+        const current = uiState.verticalCamera ?? createIdentityCameraState();
+        return setVerticalCameraState({
+            scale,
+            translateX: current.translateX,
+            translateY: current.translateY
+        });
+    }
+
+    function zoomVerticalCameraBy(deltaScale = 0) {
+        const safeDeltaScale = Number(deltaScale);
+        if (!Number.isFinite(safeDeltaScale) || safeDeltaScale === 0) {
+            return uiState.verticalCamera ?? createIdentityCameraState();
+        }
+        const current = uiState.verticalCamera ?? createIdentityCameraState();
+        return setVerticalCameraZoom(current.scale + safeDeltaScale);
+    }
+
+    function panVerticalCameraBy(deltaX = 0, deltaY = 0) {
+        const safeDeltaX = normalizeCameraPanCoordinate(deltaX, 0);
+        const safeDeltaY = normalizeCameraPanCoordinate(deltaY, 0);
+        if (!uiState.verticalCamera) {
+            uiState.verticalCamera = createIdentityCameraState();
+        }
+        if (safeDeltaX === 0 && safeDeltaY === 0) return uiState.verticalCamera;
+        return setVerticalCameraPan({
+            translateX: uiState.verticalCamera.translateX + safeDeltaX,
+            translateY: uiState.verticalCamera.translateY + safeDeltaY
+        });
+    }
+
+    function resetVerticalCameraPan() {
+        const currentScale = uiState.verticalCamera?.scale;
+        return setVerticalCameraState({
+            scale: currentScale,
+            translateX: 0,
+            translateY: 0
+        });
+    }
+
+    function resetVerticalCameraView() {
+        return setVerticalCameraState(createIdentityCameraState());
+    }
+
+    function setDirectionalCameraPan(camera = {}) {
+        const current = uiState.directionalCamera ?? createIdentityCameraState();
+        return setDirectionalCameraState({
+            scale: current.scale,
+            translateX: camera?.translateX,
+            translateY: camera?.translateY
+        });
+    }
+
+    function setDirectionalCameraState(camera = {}) {
+        const current = uiState.directionalCamera ?? createIdentityCameraState();
+        const nextScale = normalizeDirectionalCameraScale(camera?.scale, current.scale);
+        const nextTranslateX = normalizeCameraPanCoordinate(camera?.translateX, current.translateX);
+        const nextTranslateY = normalizeCameraPanCoordinate(camera?.translateY, current.translateY);
+        const changed = !Object.is(current.scale, nextScale) ||
+            !Object.is(current.translateX, nextTranslateX) ||
+            !Object.is(current.translateY, nextTranslateY);
+        if (!changed) return current;
+
+        current.scale = nextScale;
+        current.translateX = nextTranslateX;
+        current.translateY = nextTranslateY;
+        uiState.directionalCamera = current;
+        return current;
+    }
+
+    function setDirectionalCameraZoom(scale = 1) {
+        const current = uiState.directionalCamera ?? createIdentityCameraState();
+        return setDirectionalCameraState({
+            scale,
+            translateX: current.translateX,
+            translateY: current.translateY
+        });
+    }
+
+    function zoomDirectionalCameraBy(deltaScale = 0) {
+        const safeDeltaScale = Number(deltaScale);
+        if (!Number.isFinite(safeDeltaScale) || safeDeltaScale === 0) {
+            return uiState.directionalCamera ?? createIdentityCameraState();
+        }
+        const current = uiState.directionalCamera ?? createIdentityCameraState();
+        return setDirectionalCameraZoom(current.scale + safeDeltaScale);
+    }
+
+    function panDirectionalCameraBy(deltaX = 0, deltaY = 0) {
+        const safeDeltaX = normalizeCameraPanCoordinate(deltaX, 0);
+        const safeDeltaY = normalizeCameraPanCoordinate(deltaY, 0);
+        if (!uiState.directionalCamera) {
+            uiState.directionalCamera = createIdentityCameraState();
+        }
+        if (safeDeltaX === 0 && safeDeltaY === 0) return uiState.directionalCamera;
+        return setDirectionalCameraPan({
+            translateX: uiState.directionalCamera.translateX + safeDeltaX,
+            translateY: uiState.directionalCamera.translateY + safeDeltaY
+        });
+    }
+
+    function resetDirectionalCameraPan() {
+        const currentScale = uiState.directionalCamera?.scale;
+        return setDirectionalCameraState({
+            scale: currentScale,
+            translateX: 0,
+            translateY: 0
+        });
+    }
+
+    function resetDirectionalCameraView() {
+        return setDirectionalCameraState(createIdentityCameraState());
+    }
+
+    function requestDirectionalFitToData(delta = 1) {
+        const safeDelta = normalizeMetricsDelta(delta);
+        if (safeDelta <= 0) return uiState.directionalFitToDataRequestCount;
+        uiState.directionalFitToDataRequestCount += safeDelta;
+        return uiState.directionalFitToDataRequestCount;
+    }
+
+    function resetCameraViewsForWellSwitch() {
+        resetVerticalCameraView();
+        resetDirectionalCameraView();
+        return {
+            verticalCamera: uiState.verticalCamera,
+            directionalCamera: uiState.directionalCamera
+        };
     }
 
     function updateConfig(patch) {
@@ -717,6 +940,23 @@ export const useViewConfigStore = defineStore('viewConfig', () => {
         setCementColor,
         setCementHatchEnabled,
         setCementHatchStyle,
+        setUseCameraTransform,
+        setCameraTransformVertical,
+        setCameraTransformDirectional,
+        setVerticalCameraPan,
+        setVerticalCameraZoom,
+        zoomVerticalCameraBy,
+        panVerticalCameraBy,
+        resetVerticalCameraPan,
+        resetVerticalCameraView,
+        setDirectionalCameraPan,
+        setDirectionalCameraZoom,
+        zoomDirectionalCameraBy,
+        panDirectionalCameraBy,
+        resetDirectionalCameraPan,
+        resetDirectionalCameraView,
+        requestDirectionalFitToData,
+        resetCameraViewsForWellSwitch,
         setConfigValue,
         updateConfig,
         getVerticalSectionModeSelectionFromConfig,

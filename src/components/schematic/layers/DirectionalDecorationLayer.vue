@@ -7,6 +7,7 @@ import {
   getStackAtDepth as getPhysicsStackAtDepth
 } from '@/composables/usePhysics.js';
 import { clamp } from '@/utils/general.js';
+import { resolvePipeWallGeometry } from '@/utils/pipeWallGeometry.js';
 import {
   buildPipeReferenceMap,
   normalizePipeHostType,
@@ -155,12 +156,8 @@ function normalizePipeType(value) {
 }
 
 function resolvePipeWallThickness(row) {
-  const od = toFiniteNumber(row?.od, null);
-  const innerDiameter = toFiniteNumber(row?.innerDiameter, null);
-  if (!Number.isFinite(od) || !Number.isFinite(innerDiameter) || innerDiameter <= 0 || innerDiameter >= od) {
-    return 0;
-  }
-  return ((od - innerDiameter) / 2) * Number(props.diameterScale);
+  const wallGeometry = resolvePipeWallGeometry(row, Number(props.diameterScale));
+  return Number.isFinite(wallGeometry?.wallThickness) ? wallGeometry.wallThickness : 0;
 }
 
 function resolveCrossoverColor(pipeType) {
@@ -272,13 +269,8 @@ const pipeReferenceMap = computed(() => {
 });
 
 function resolveScaledWallThickness(row, diameterScale) {
-  if (!row) return 0;
-  const od = toFiniteNumber(row.od, null);
-  if (!Number.isFinite(od) || od <= 0) return 0;
-  const innerDiameter = toFiniteNumber(row.innerDiameter, null) ??
-    (Number.isFinite(toFiniteNumber(row.innerRadius, null)) ? toFiniteNumber(row.innerRadius, 0) * 2 : null);
-  if (!Number.isFinite(innerDiameter) || innerDiameter <= 0 || innerDiameter >= od) return 0;
-  return ((od - innerDiameter) / 2) * diameterScale;
+  const wallGeometry = resolvePipeWallGeometry(row, diameterScale);
+  return Number.isFinite(wallGeometry?.wallThickness) ? wallGeometry.wallThickness : 0;
 }
 
 function resolveMarkerSideSigns(marker) {
@@ -302,8 +294,27 @@ function resolveHostPipeType(hostType) {
   return hostType === PIPE_HOST_TYPE_TUBING ? 'tubing' : 'casing';
 }
 
-function resolveMarkerBaseRadiusAtMD(marker, md) {
+function buildMarkerWallGeometry(outerRadius, innerRadius = null) {
+  const outer = toFiniteNumber(outerRadius, null);
+  if (!Number.isFinite(outer) || outer <= DIRECTIONAL_EPSILON) return null;
+
+  const innerRaw = toFiniteNumber(innerRadius, outer);
+  const inner = Number.isFinite(innerRaw)
+    ? clamp(innerRaw, 0, outer)
+    : outer;
+  const wallThickness = Math.max(0, outer - inner);
+  return {
+    outerRadius: outer,
+    wallCenterRadius: outer - (wallThickness / 2),
+    wallThickness
+  };
+}
+
+function resolveMarkerWallGeometryAtMD(marker, md) {
   const stack = getStackAtMD(md);
+  const diameterScale = Number.isFinite(Number(props.diameterScale)) && Number(props.diameterScale) > 0
+    ? Number(props.diameterScale)
+    : 1;
   const hostType = normalizePipeHostType(marker?.attachToHostType, PIPE_HOST_TYPE_CASING);
   const hostPipeType = resolveHostPipeType(hostType);
   const resolvedHost = resolvePipeHostReference(marker?.attachToRow, pipeReferenceMap.value, {
@@ -320,39 +331,64 @@ function resolveMarkerBaseRadiusAtMD(marker, md) {
       Number.isFinite(Number(layer?.outerRadius))
     ));
     if (attachedLayer) {
-      return Number(attachedLayer.outerRadius) * Number(props.diameterScale);
+      return buildMarkerWallGeometry(
+        Number(attachedLayer.outerRadius) * diameterScale,
+        Number(attachedLayer.innerRadius) * diameterScale
+      );
     }
 
     const attachRow = pipeRowsByType.value?.[hostPipeType]?.get(attachIndex) ?? null;
-    const attachOD = Number(attachRow?.od);
-    if (Number.isFinite(attachOD) && attachOD > 0) {
-      return (attachOD / 2) * Number(props.diameterScale);
+    const attachWallGeometry = resolvePipeWallGeometry(attachRow, diameterScale);
+    if (attachWallGeometry) {
+      return buildMarkerWallGeometry(attachWallGeometry.outerRadius, attachWallGeometry.innerRadius);
     }
   }
 
-  const activeHostOuterRadii = (stack || [])
+  const activeHostLayers = (stack || [])
     .filter((layer) => (
       layer?.material === 'steel' &&
-      String(layer?.source?.pipeType ?? '').trim() === hostPipeType
+      String(layer?.source?.pipeType ?? '').trim() === hostPipeType &&
+      Number.isFinite(Number(layer?.outerRadius))
     ))
-    .map((layer) => Number(layer?.outerRadius))
-    .filter((value) => Number.isFinite(value) && value > 0)
-    .sort((a, b) => a - b);
-  if (activeHostOuterRadii.length > 0) {
-    return activeHostOuterRadii[0] * Number(props.diameterScale);
+    .sort((left, right) => Number(left?.outerRadius) - Number(right?.outerRadius));
+  if (activeHostLayers.length > 0) {
+    const layer = activeHostLayers[0];
+    return buildMarkerWallGeometry(
+      Number(layer?.outerRadius) * diameterScale,
+      Number(layer?.innerRadius) * diameterScale
+    );
   }
 
-  const activeOuterRadii = (stack || [])
-    .filter((layer) => layer?.material === 'steel')
-    .map((layer) => Number(layer?.outerRadius))
-    .filter((value) => Number.isFinite(value) && value > 0)
-    .sort((a, b) => a - b);
-  if (activeOuterRadii.length > 0) {
-    return activeOuterRadii[0] * Number(props.diameterScale);
+  const activeHostRows = Array.from(pipeRowsByType.value?.[hostPipeType]?.values?.() ?? [])
+    .filter((row) => (
+      Number.isFinite(Number(row?.top)) &&
+      Number.isFinite(Number(row?.bottom)) &&
+      Number(row.top) <= md &&
+      md <= Number(row.bottom)
+    ))
+    .sort((left, right) => Number(left?.od) - Number(right?.od));
+  if (activeHostRows.length > 0) {
+    const rowWallGeometry = resolvePipeWallGeometry(activeHostRows[0], diameterScale);
+    if (rowWallGeometry) {
+      return buildMarkerWallGeometry(rowWallGeometry.outerRadius, rowWallGeometry.innerRadius);
+    }
+  }
+
+  const activeSteelLayers = (stack || [])
+    .filter((layer) => layer?.material === 'steel' && Number.isFinite(Number(layer?.outerRadius)))
+    .sort((left, right) => Number(left?.outerRadius) - Number(right?.outerRadius));
+  if (activeSteelLayers.length > 0) {
+    const layer = activeSteelLayers[0];
+    return buildMarkerWallGeometry(
+      Number(layer?.outerRadius) * diameterScale,
+      Number(layer?.innerRadius) * diameterScale
+    );
   }
 
   const maxProjectedRadius = Number(props.maxProjectedRadius);
-  return maxProjectedRadius > DIRECTIONAL_EPSILON ? maxProjectedRadius * 0.7 : null;
+  return maxProjectedRadius > DIRECTIONAL_EPSILON
+    ? buildMarkerWallGeometry(maxProjectedRadius * 0.7)
+    : null;
 }
 
 function buildPerforationSamples(top, bottom) {
@@ -572,19 +608,16 @@ const markerShapes = computed(() => {
       const md = clamp((top + bottom) / 2, 0, Number(props.totalMd));
       const frame = resolveScreenFrameAtMD(md, frameContext.value);
       if (!frame) return;
-      const baseRadius = resolveMarkerBaseRadiusAtMD(marker, md);
-      if (!Number.isFinite(baseRadius)) return;
+      const wallGeometry = resolveMarkerWallGeometryAtMD(marker, md);
+      if (!wallGeometry) return;
 
       sideSigns.forEach((sideSign) => {
-        const wallPoint = project.value(md, sideSign * baseRadius);
+        const wallPoint = project.value(md, sideSign * wallGeometry.wallCenterRadius);
         if (!isFinitePoint(wallPoint)) return;
         const outward = sideSign === 1
           ? frame.normal
           : { x: -frame.normal.x, y: -frame.normal.y };
-        const center = [
-          wallPoint[0] + (outward.x * 5 * scale),
-          wallPoint[1] + (outward.y * 5 * scale)
-        ];
+        const center = [wallPoint[0], wallPoint[1]];
         items.push(...buildLeakSymbols(center, frame.tangent, outward, markerColor, scale).map((shape, index) => ({
           ...shape,
           id: `marker-leak-${markerIndex}-${sideSign}-${index}`,
@@ -601,11 +634,11 @@ const markerShapes = computed(() => {
     samplePoints.forEach((md, sampleIndex) => {
       const frame = resolveScreenFrameAtMD(md, frameContext.value);
       if (!frame) return;
-      const baseRadius = resolveMarkerBaseRadiusAtMD(marker, md);
-      if (!Number.isFinite(baseRadius)) return;
+      const wallGeometry = resolveMarkerWallGeometryAtMD(marker, md);
+      if (!wallGeometry) return;
 
       sideSigns.forEach((sideSign) => {
-        const wallPoint = project.value(md, sideSign * baseRadius);
+        const wallPoint = project.value(md, sideSign * wallGeometry.outerRadius);
         if (!isFinitePoint(wallPoint)) return;
         const outward = sideSign === 1
           ? frame.normal

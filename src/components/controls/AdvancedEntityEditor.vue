@@ -1,19 +1,22 @@
 <script setup>
 import { computed, reactive, watch } from 'vue';
+import InputNumber from 'primevue/inputnumber';
+import InputText from 'primevue/inputtext';
+import Select from 'primevue/select';
+import Textarea from 'primevue/textarea';
+import ToggleSwitch from 'primevue/toggleswitch';
 import { useWorkspaceEditorMode } from '@/composables/useWorkspaceEditorMode.js';
 import {
-  resolveEntityEditorDomainKey,
   useEntityEditorActions
 } from '@/composables/useEntityEditorActions.js';
 import { resolveSelectionRowTarget } from '@/app/selectionRowLocator.js';
 import { useProjectDataStore } from '@/stores/projectDataStore.js';
 import { useProjectStore } from '@/stores/projectStore.js';
-import { useWorkspaceStore } from '@/stores/workspaceStore.js';
 import {
+  DATA_TAB_READ_ONLY_FIELDS_ENABLED,
   ENTITY_EDITOR_CONTROL_TYPES,
   resolveEntityEditorFieldDefinitions
 } from '@/controls/entityEditor/entityFieldSchema.js';
-import { resolveHierarchyRowsForDomain } from '@/workspace/hierarchyDomainMeta.js';
 
 const props = defineProps({
   mode: {
@@ -22,11 +25,10 @@ const props = defineProps({
   }
 });
 
-const workspaceStore = useWorkspaceStore();
 const projectStore = useProjectStore();
 const projectDataStore = useProjectDataStore();
 const { selectedHierarchyRef, selectedVisualContext } = useWorkspaceEditorMode();
-const { updateField, addRow, duplicateRow, deleteRow, moveRow } = useEntityEditorActions();
+const { updateField } = useEntityEditorActions();
 const draftValues = reactive({});
 
 function normalizeRowRef(value) {
@@ -67,34 +69,36 @@ const selectedRowTarget = computed(() => {
 const fieldDefinitions = computed(() => resolveEntityEditorFieldDefinitions({
   entityType: effectiveSelectionRef.value?.entityType,
   rowData: selectedRowTarget.value?.row ?? {},
-  mode: props.mode
+  mode: props.mode,
+  includeReadOnly: DATA_TAB_READ_ONLY_FIELDS_ENABLED,
+  context: {
+    casingRows: projectDataStore.casingData,
+    tubingRows: projectDataStore.tubingData
+  }
 }));
 
-const selectedDomainRows = computed(() => {
-  const selectionRef = effectiveSelectionRef.value;
-  const domainKey = resolveEntityEditorDomainKey(selectionRef?.entityType);
-  if (!domainKey) return [];
-  return resolveHierarchyRowsForDomain(domainKey, projectDataStore);
-});
+const editableFieldDefinitions = computed(() => (
+  fieldDefinitions.value.filter((fieldDefinition) => fieldDefinition.readOnly !== true)
+));
 
-const canMoveUp = computed(() => {
-  const index = selectedRowTarget.value?.domainRowIndex;
-  return Number.isInteger(index) && index > 0;
-});
+const readOnlyFieldDefinitions = computed(() => (
+  fieldDefinitions.value.filter((fieldDefinition) => fieldDefinition.readOnly === true)
+));
 
-const canMoveDown = computed(() => {
-  const index = selectedRowTarget.value?.domainRowIndex;
-  if (!Number.isInteger(index)) return false;
-  return index < selectedDomainRows.value.length - 1;
-});
-
-function getFieldTestId(fieldName) {
-  const token = String(fieldName ?? '')
+function toFieldToken(value) {
+  return String(value ?? '')
     .trim()
     .replace(/[^a-zA-Z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .toLowerCase();
-  return `advanced-field-${token}`;
+}
+
+function getFieldTestId(fieldName) {
+  return `advanced-field-${toFieldToken(fieldName)}`;
+}
+
+function getReadOnlyFieldTestId(fieldName) {
+  return `advanced-readonly-${toFieldToken(fieldName)}`;
 }
 
 function getDraftValue(fieldDefinition) {
@@ -112,6 +116,11 @@ function normalizeCommittedValue(fieldDefinition, value) {
   }
   if (fieldDefinition.controlType === ENTITY_EDITOR_CONTROL_TYPES.toggle) {
     return value === true;
+  }
+  if (fieldDefinition.controlType === ENTITY_EDITOR_CONTROL_TYPES.select) {
+    if (value === null || value === undefined) return null;
+    if (value === '') return '';
+    return value;
   }
   if (fieldDefinition.controlType === ENTITY_EDITOR_CONTROL_TYPES.json) {
     const normalized = String(value ?? '').trim();
@@ -138,55 +147,32 @@ function commitField(fieldDefinition) {
   });
 }
 
-function handleAddRow() {
-  const selectionRef = effectiveSelectionRef.value;
-  const entityType = selectionRef?.entityType ?? 'casing';
-  const nextRowId = addRow({
-    entityType,
-    afterRowId: selectionRef?.rowId ?? null
-  });
-  if (!nextRowId || !selectionRef?.wellId) return;
-  workspaceStore.setSelectedHierarchyRef({
-    wellId: selectionRef.wellId,
-    entityType,
-    rowId: nextRowId
-  });
+function getFieldOptions(fieldDefinition) {
+  if (fieldDefinition.controlType !== ENTITY_EDITOR_CONTROL_TYPES.select) return [];
+  return Array.isArray(fieldDefinition.options) ? fieldDefinition.options : [];
 }
 
-function handleDuplicateRow() {
-  const selectionRef = effectiveSelectionRef.value;
-  if (!selectionRef) return;
-  const nextRowId = duplicateRow({
-    entityType: selectionRef.entityType,
-    rowId: selectionRef.rowId
-  });
-  if (!nextRowId) return;
-  workspaceStore.setSelectedHierarchyRef({
-    wellId: selectionRef.wellId,
-    entityType: selectionRef.entityType,
-    rowId: nextRowId
-  });
+function resolveReadOnlySelectLabel(fieldDefinition, value) {
+  const options = getFieldOptions(fieldDefinition);
+  const matchedOption = options.find((option) => option.value === value);
+  return String(matchedOption?.label ?? value ?? '').trim();
 }
 
-function handleDeleteRow() {
-  const selectionRef = effectiveSelectionRef.value;
-  if (!selectionRef) return;
-  const didDelete = deleteRow({
-    entityType: selectionRef.entityType,
-    rowId: selectionRef.rowId
-  });
-  if (!didDelete) return;
-  workspaceStore.clearSelectedHierarchyRef();
-}
-
-function handleMove(direction) {
-  const selectionRef = effectiveSelectionRef.value;
-  if (!selectionRef) return;
-  moveRow({
-    entityType: selectionRef.entityType,
-    rowId: selectionRef.rowId,
-    direction
-  });
+function getReadOnlyDisplayValue(fieldDefinition) {
+  const rawValue = selectedRowTarget.value?.row?.[fieldDefinition.field];
+  if (fieldDefinition.controlType === ENTITY_EDITOR_CONTROL_TYPES.select) {
+    const label = resolveReadOnlySelectLabel(fieldDefinition, rawValue);
+    return label || 'N/A';
+  }
+  if (fieldDefinition.controlType === ENTITY_EDITOR_CONTROL_TYPES.toggle) {
+    return rawValue === true ? 'True' : 'False';
+  }
+  if (fieldDefinition.controlType === ENTITY_EDITOR_CONTROL_TYPES.json) {
+    if (!rawValue || typeof rawValue !== 'object') return 'N/A';
+    return JSON.stringify(rawValue, null, 2);
+  }
+  if (rawValue === null || rawValue === undefined || rawValue === '') return 'N/A';
+  return String(rawValue);
 }
 
 watch(
@@ -198,7 +184,19 @@ watch(
         draftValues[fieldDefinition.field] = currentValue ? JSON.stringify(currentValue, null, 2) : '';
         return;
       }
-      draftValues[fieldDefinition.field] = currentValue ?? (fieldDefinition.controlType === ENTITY_EDITOR_CONTROL_TYPES.toggle ? false : '');
+      if (fieldDefinition.controlType === ENTITY_EDITOR_CONTROL_TYPES.toggle) {
+        draftValues[fieldDefinition.field] = currentValue === true;
+        return;
+      }
+      if (fieldDefinition.controlType === ENTITY_EDITOR_CONTROL_TYPES.number) {
+        draftValues[fieldDefinition.field] = currentValue ?? null;
+        return;
+      }
+      if (fieldDefinition.controlType === ENTITY_EDITOR_CONTROL_TYPES.select) {
+        draftValues[fieldDefinition.field] = currentValue ?? null;
+        return;
+      }
+      draftValues[fieldDefinition.field] = currentValue ?? '';
     });
   },
   { immediate: true }
@@ -208,25 +206,19 @@ watch(
 <template>
   <Card class="control-group advanced-entity-editor">
     <template #content>
-      <div class="section-title">{{ props.mode === 'advanced' ? 'Advanced Entity Editor' : 'Entity Editor' }}</div>
-      <small class="control-helper">Select an item from the hierarchy to edit its fields.</small>
+      <div class="section-title">Data Editor</div>
+      <small class="control-helper">
+        Select an item from the hierarchy to edit non-visual engineering data.
+      </small>
 
       <div v-if="!selectedRowTarget" class="advanced-entity-editor__empty mt-2">
         No hierarchy item is selected.
       </div>
 
       <template v-else>
-        <div class="advanced-entity-editor__actions mt-2">
-          <Button type="button" size="small" icon="pi pi-plus" label="Add" @click="handleAddRow" />
-          <Button type="button" size="small" icon="pi pi-copy" label="Duplicate" @click="handleDuplicateRow" />
-          <Button type="button" size="small" icon="pi pi-arrow-up" label="Up" :disabled="!canMoveUp" @click="handleMove('up')" />
-          <Button type="button" size="small" icon="pi pi-arrow-down" label="Down" :disabled="!canMoveDown" @click="handleMove('down')" />
-          <Button type="button" size="small" severity="danger" icon="pi pi-trash" label="Delete" @click="handleDeleteRow" />
-        </div>
-
-        <div class="advanced-entity-editor__fields mt-2">
+        <div v-if="editableFieldDefinitions.length > 0" class="advanced-entity-editor__fields mt-2">
           <div
-            v-for="fieldDefinition in fieldDefinitions"
+            v-for="fieldDefinition in editableFieldDefinitions"
             :key="fieldDefinition.field"
             class="advanced-entity-editor__field"
           >
@@ -234,49 +226,104 @@ watch(
               {{ fieldDefinition.label }}
             </label>
 
-            <input
+            <InputText
               v-if="fieldDefinition.controlType === ENTITY_EDITOR_CONTROL_TYPES.text"
               :id="getFieldTestId(fieldDefinition.field)"
-              class="form-control"
+              class="w-100"
               :data-testid="getFieldTestId(fieldDefinition.field)"
-              :value="getDraftValue(fieldDefinition)"
-              @input="setDraftValue(fieldDefinition, $event.target.value)"
+              :model-value="getDraftValue(fieldDefinition)"
+              @update:model-value="setDraftValue(fieldDefinition, $event)"
               @blur="commitField(fieldDefinition)"
             />
 
-            <input
+            <InputNumber
               v-else-if="fieldDefinition.controlType === ENTITY_EDITOR_CONTROL_TYPES.number"
-              :id="getFieldTestId(fieldDefinition.field)"
-              class="form-control"
-              type="number"
+              :input-id="getFieldTestId(fieldDefinition.field)"
+              class="w-100"
+              fluid
               :data-testid="getFieldTestId(fieldDefinition.field)"
-              :value="getDraftValue(fieldDefinition)"
-              @input="setDraftValue(fieldDefinition, $event.target.value)"
+              :model-value="getDraftValue(fieldDefinition)"
+              :use-grouping="false"
+              @update:model-value="setDraftValue(fieldDefinition, $event)"
               @blur="commitField(fieldDefinition)"
+              @keydown.enter.prevent="commitField(fieldDefinition)"
             />
 
-            <input
+            <div
               v-else-if="fieldDefinition.controlType === ENTITY_EDITOR_CONTROL_TYPES.toggle"
-              :id="getFieldTestId(fieldDefinition.field)"
-              type="checkbox"
-              class="form-check-input"
+              class="d-flex align-items-center gap-2"
+            >
+              <ToggleSwitch
+                :input-id="getFieldTestId(fieldDefinition.field)"
+                :data-testid="getFieldTestId(fieldDefinition.field)"
+                :model-value="getDraftValue(fieldDefinition) === true"
+                @update:model-value="setDraftValue(fieldDefinition, $event); commitField(fieldDefinition)"
+              />
+            </div>
+
+            <Select
+              v-else-if="fieldDefinition.controlType === ENTITY_EDITOR_CONTROL_TYPES.select"
+              :input-id="getFieldTestId(fieldDefinition.field)"
+              :model-value="getDraftValue(fieldDefinition)"
+              :options="getFieldOptions(fieldDefinition)"
+              option-label="label"
+              option-value="value"
+              class="w-100"
               :data-testid="getFieldTestId(fieldDefinition.field)"
-              :checked="getDraftValue(fieldDefinition) === true"
-              @change="setDraftValue(fieldDefinition, $event.target.checked); commitField(fieldDefinition)"
+              @update:model-value="setDraftValue(fieldDefinition, $event); commitField(fieldDefinition)"
             />
 
-            <textarea
+            <Textarea
               v-else
               :id="getFieldTestId(fieldDefinition.field)"
-              class="form-control"
+              class="w-100 advanced-entity-editor__textarea"
               rows="3"
               :data-testid="getFieldTestId(fieldDefinition.field)"
-              :value="getDraftValue(fieldDefinition)"
-              @input="setDraftValue(fieldDefinition, $event.target.value)"
+              :model-value="getDraftValue(fieldDefinition)"
+              auto-resize
+              @update:model-value="setDraftValue(fieldDefinition, $event)"
               @blur="commitField(fieldDefinition)"
-            ></textarea>
+            />
           </div>
         </div>
+
+        <section v-if="readOnlyFieldDefinitions.length > 0" class="advanced-entity-editor__readonly mt-3">
+          <header class="advanced-entity-editor__readonly-header">
+            <span class="pi pi-lock advanced-entity-editor__readonly-icon" aria-hidden="true"></span>
+            <span class="advanced-entity-editor__readonly-title">Read-only Transparency</span>
+          </header>
+          <small class="advanced-entity-editor__readonly-helper">
+            Internal data is shown for inspection only.
+          </small>
+
+          <div class="advanced-entity-editor__readonly-fields mt-2">
+            <div
+              v-for="fieldDefinition in readOnlyFieldDefinitions"
+              :key="fieldDefinition.field"
+              class="advanced-entity-editor__field advanced-entity-editor__field--readonly"
+            >
+              <label class="form-label mb-1" :for="getReadOnlyFieldTestId(fieldDefinition.field)">
+                {{ fieldDefinition.label }}
+              </label>
+
+              <pre
+                v-if="fieldDefinition.controlType === ENTITY_EDITOR_CONTROL_TYPES.json"
+                :id="getReadOnlyFieldTestId(fieldDefinition.field)"
+                class="advanced-entity-editor__readonly-json"
+                :data-testid="getReadOnlyFieldTestId(fieldDefinition.field)"
+              >{{ getReadOnlyDisplayValue(fieldDefinition) }}</pre>
+
+              <div
+                v-else
+                :id="getReadOnlyFieldTestId(fieldDefinition.field)"
+                class="advanced-entity-editor__readonly-value"
+                :data-testid="getReadOnlyFieldTestId(fieldDefinition.field)"
+              >
+                {{ getReadOnlyDisplayValue(fieldDefinition) }}
+              </div>
+            </div>
+          </div>
+        </section>
       </template>
     </template>
   </Card>
@@ -292,14 +339,82 @@ watch(
   font-size: 0.84rem;
 }
 
-.advanced-entity-editor__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
 .advanced-entity-editor__fields {
   display: grid;
   gap: 10px;
+}
+
+.advanced-entity-editor__textarea {
+  min-height: 72px;
+}
+
+.advanced-entity-editor__readonly {
+  border: 1px dashed color-mix(in srgb, var(--line) 75%, var(--ink) 25%);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-surface-elevated) 90%, black 10%);
+  padding: 10px 12px;
+}
+
+.advanced-entity-editor__readonly-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.advanced-entity-editor__readonly-icon {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.advanced-entity-editor__readonly-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.advanced-entity-editor__readonly-helper {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.advanced-entity-editor__readonly-fields {
+  display: grid;
+  gap: 10px;
+}
+
+.advanced-entity-editor__field--readonly .form-label {
+  color: var(--muted);
+}
+
+.advanced-entity-editor__readonly-value {
+  border: 1px solid color-mix(in srgb, var(--line) 65%, var(--ink) 35%);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-surface-panel) 88%, black 12%);
+  color: var(--ink);
+  font-size: 0.84rem;
+  line-height: 1.4;
+  padding: 8px 10px;
+  min-height: 38px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.advanced-entity-editor__readonly-json {
+  margin: 0;
+  border: 1px solid color-mix(in srgb, var(--line) 65%, var(--ink) 35%);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-surface-panel) 88%, black 12%);
+  color: var(--ink);
+  font-size: 0.84rem;
+  line-height: 1.4;
+  padding: 8px 10px;
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 </style>

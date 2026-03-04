@@ -396,7 +396,7 @@ onBeforeUnmount(() => {
   padding: 4px 6px;
   border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
   border-radius: var(--radius-pill);
-  background: color-mix(in srgb, var(--panel-bg, #f8fafc) 92%, transparent);
+  background: color-mix(in srgb, var(--panel-bg) 92%, transparent);
   flex-wrap: wrap;
 }
 

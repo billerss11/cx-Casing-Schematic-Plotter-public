@@ -4,6 +4,10 @@ import { useProjectDataStore } from '@/stores/projectDataStore.js';
 import { useViewConfigStore } from '@/stores/viewConfigStore.js';
 import { useInteractionStore } from '@/stores/interactionStore.js';
 import {
+    getTableEditableDataFieldNames,
+    getTableHiddenDataFieldNames
+} from '@/controls/entityEditor/entityFieldContract.js';
+import {
     NAMED_COLORS,
     DEFAULT_LINE_COLOR,
     DEFAULT_BOX_COLOR,
@@ -13,7 +17,6 @@ import {
     CASING_NUMERIC_FIELDS,
     TUBING_NUMERIC_FIELDS,
     DRILL_STRING_NUMERIC_FIELDS,
-    EQUIPMENT_NUMERIC_FIELDS,
     LINE_NUMERIC_FIELDS,
     BOX_NUMERIC_FIELDS,
     PLUG_NUMERIC_FIELDS,
@@ -66,63 +69,19 @@ import {
     normalizeInteractionEntity
 } from '@/composables/useSchematicInteraction.js';
 import {
-    EQUIPMENT_TYPE_OPTIONS
-} from '@/topology/equipmentMetadata.js';
-import {
-    MODELED_CASING_ANNULUS_KINDS,
-    NODE_KIND_FORMATION_ANNULUS,
-    SOURCE_KIND_FORMATION_INFLOW,
-    SOURCE_KIND_LEAK,
-    SOURCE_KIND_PERFORATION,
-    SOURCE_KIND_SCENARIO,
-    TOPOLOGY_VOLUME_KINDS
-} from '@/topology/topologyTypes.js';
-import {
-    filterScenarioBreakoutRows,
-    filterScenarioSourceRows,
-    mergeScenarioBreakoutRows,
-    mergeScenarioSourceRows
-} from '@/topology/sourceRows.js';
-import {
     buildPipeReferenceOptions,
     normalizePipeHostType,
     PIPE_HOST_TYPE_CASING,
     PIPE_HOST_TYPE_TUBING
 } from '@/utils/pipeReference.js';
+import { buildEquipmentTableSchema } from '@/composables/tableSchemas/equipmentSchema.js';
 import {
-    buildEquipmentAttachOptions,
-    resolveEquipmentAttachOption
-} from '@/utils/equipmentAttachReference.js';
+    buildTopologyBreakoutSchema,
+    buildTopologySourceSchema
+} from '@/composables/tableSchemas/topologySchema.js';
 
 const TRAJECTORY_NUMERIC_FIELDS = new Set(['md', 'inc', 'azi']);
-const TOPOLOGY_SOURCE_NUMERIC_FIELDS = new Set(['top', 'bottom']);
 const TRAJECTORY_COMPUTED_FIELD_KEYS = Object.freeze(['calcTvd', 'calcNorth', 'calcEast', 'calcVs', 'calcDls']);
-const TOPOLOGY_SOURCE_TYPE_OPTIONS = Object.freeze([
-    SOURCE_KIND_FORMATION_INFLOW,
-    SOURCE_KIND_PERFORATION,
-    SOURCE_KIND_LEAK,
-    SOURCE_KIND_SCENARIO
-]);
-const TOPOLOGY_SOURCE_VOLUME_OPTIONS = TOPOLOGY_VOLUME_KINDS;
-
-function createTopologySourceVolumeCellLabels() {
-    const labels = {
-        TUBING_INNER: 'TUBING_INNER (legacy BORE)',
-        TUBING_ANNULUS: 'TUBING_ANNULUS (inner annulus: tubing-to-first-casing)',
-        FORMATION_ANNULUS: 'FORMATION_ANNULUS (open hole / outside outermost casing)'
-    };
-
-    MODELED_CASING_ANNULUS_KINDS.forEach((kind, index) => {
-        const suffix = kind.replace('ANNULUS_', '');
-        labels[kind] = index === 0
-            ? `${kind} (outer annulus ${suffix}: first casing-to-casing)`
-            : `${kind} (outer annulus ${suffix})`;
-    });
-
-    return Object.freeze(labels);
-}
-
-const TOPOLOGY_SOURCE_VOLUME_CELL_LABELS = createTopologySourceVolumeCellLabels();
 const MARKER_HOST_TYPE_OPTIONS = Object.freeze([
     PIPE_HOST_TYPE_CASING,
     PIPE_HOST_TYPE_TUBING
@@ -153,20 +112,58 @@ function tf(key, fallback) {
     return value === key ? fallback : value;
 }
 
+function normalizeFieldToken(value) {
+    return String(value ?? '').trim();
+}
+
+function resolveSchemaColumnFieldNames(schema) {
+    if (!schema || typeof schema.columns !== 'function') return [];
+    const columns = schema.columns();
+    if (!Array.isArray(columns)) return [];
+
+    return columns
+        .map((column) => normalizeFieldToken(column?.data))
+        .filter((field) => field.length > 0);
+}
+
+function shouldThrowContractMismatchError() {
+    const mode = String(import.meta?.env?.MODE ?? '').trim().toLowerCase();
+    return mode === 'test' || import.meta?.env?.DEV === true;
+}
+
+function enforceTableSchemaDataContract(tableType, schema) {
+    if (!schema) return;
+
+    const columnFields = resolveSchemaColumnFieldNames(schema);
+    if (columnFields.length === 0) return;
+
+    const expectedEditable = getTableEditableDataFieldNames(tableType);
+    const expectedHidden = getTableHiddenDataFieldNames(tableType);
+    const missingEditable = expectedEditable.filter((field) => !columnFields.includes(field));
+    const unexpectedHidden = expectedHidden.filter((field) => columnFields.includes(field));
+    if (missingEditable.length === 0 && unexpectedHidden.length === 0) return;
+
+    const lines = [
+        `[Table/Data Contract] ${tableType} field contract mismatch.`
+    ];
+    if (missingEditable.length > 0) {
+        lines.push(`Missing editable fields: ${missingEditable.join(', ')}`);
+    }
+    if (unexpectedHidden.length > 0) {
+        lines.push(`Hidden fields exposed in table: ${unexpectedHidden.join(', ')}`);
+    }
+    const message = lines.join(' ');
+
+    if (shouldThrowContractMismatchError()) {
+        throw new Error(message);
+    }
+
+    console.error(message);
+}
+
 function getRows(schema) {
     const rows = schema?.getData?.();
     return Array.isArray(rows) ? rows : [];
-}
-
-function buildTopologySourceVolumeRenderer() {
-    return function topologySourceVolumeRenderer(instance, td, row, col, prop, value, cellProperties) {
-        Handsontable.renderers.TextRenderer(instance, td, row, col, prop, value, cellProperties);
-        const token = String(value ?? '').trim().toUpperCase();
-        if (!token) return;
-        const label = TOPOLOGY_SOURCE_VOLUME_CELL_LABELS[token];
-        if (!label) return;
-        td.textContent = label;
-    };
 }
 
 function toFiniteNumber(value) {
@@ -479,93 +476,11 @@ function buildTableSchema(type, domainState) {
     }
 
     if (type === 'equipment') {
-        return {
-            getData: () => domainState.equipmentData,
-            prepareData: (rows) => {
-                const attachOptions = buildEquipmentAttachOptions(domainState.casingData, domainState.tubingData);
-                return rows.map((row) => {
-                    const selectedOption = resolveEquipmentAttachOption(row, attachOptions);
-                    const attachToDisplay = selectedOption?.value
-                        ?? (String(row?.attachToDisplay ?? '').trim() || null);
-                    return {
-                        ...row,
-                        attachToDisplay
-                    };
-                });
-            },
-            colHeaders: () => [
-                tf('table.equipment.depth', 'Depth'),
-                tf('table.equipment.type', 'Type'),
-                tf('table.equipment.attach_to', 'Attach To'),
-                tf('table.equipment.color', 'Color'),
-                tf('table.equipment.scale', 'Scale'),
-                tf('table.equipment.label', 'Label'),
-                tf('table.equipment.show_label', 'Show label')
-            ],
-            columns: () => {
-                const attachSource = (query, process) => {
-                    const options = buildEquipmentAttachOptions(domainState.casingData, domainState.tubingData)
-                        .map((option) => option.value);
-                    if (typeof process === 'function') {
-                        process(options);
-                    }
-                    return options;
-                };
-                return [
-                    { data: 'depth', type: 'numeric' },
-                    {
-                        data: 'type',
-                        type: 'dropdown',
-                        source: EQUIPMENT_TYPE_OPTIONS,
-                        strict: true
-                    },
-                    {
-                        data: 'attachToDisplay',
-                        type: 'dropdown',
-                        source: attachSource,
-                        strict: false,
-                        allowInvalid: true
-                    },
-                    {
-                        data: 'color',
-                        type: 'dropdown',
-                        source: NAMED_COLORS,
-                        strict: false,
-                        allowInvalid: true,
-                        renderer: colorRenderer
-                    },
-                    { data: 'scale', type: 'numeric' },
-                    { data: 'label', type: 'text' },
-                    { data: 'showLabel', type: 'checkbox', className: 'htCenter' }
-                ];
-            },
-            requiredFields: ['depth', 'type', 'attachToDisplay'],
-            numericFields: EQUIPMENT_NUMERIC_FIELDS,
-            sampleKeyFields: ['label'],
-            afterChangeIgnoreSources: ['loadData', 'normalize'],
-            buildDefaultRow: () => {
-                const defaultAttachOption = buildEquipmentAttachOptions(domainState.casingData, domainState.tubingData)[0] ?? null;
-                return {
-                    depth: 5000,
-                    type: EQUIPMENT_TYPE_OPTIONS[0] ?? 'Packer',
-                    attachToDisplay: defaultAttachOption?.value ?? null,
-                    attachToHostType: defaultAttachOption?.hostType ?? null,
-                    attachToId: defaultAttachOption?.rowId ?? null,
-                    actuationState: '',
-                    integrityStatus: '',
-                    boreSeal: '',
-                    annularSeal: '',
-                    sealByVolume: {},
-                    color: 'black',
-                    scale: 1.0,
-                    label: t('defaults.new_equipment'),
-                    labelXPos: null,
-                    manualLabelDepth: null,
-                    labelFontSize: null,
-                    showLabel: true
-                };
-            }
-        };
+        return buildEquipmentTableSchema(domainState, {
+            t,
+            tf,
+            colorRenderer
+        });
     }
 
     if (type === 'line') {
@@ -914,118 +829,17 @@ function buildTableSchema(type, domainState) {
     }
 
     if (type === 'topologySource') {
-        const topologyVolumeRenderer = buildTopologySourceVolumeRenderer();
-        return {
-            getData: () => filterScenarioSourceRows(domainState.topologySources),
-            prepareData: (rows) => rows.map((row) => ({
-                ...row,
-                show: row?.show !== false
-            })),
-            colHeaders: () => [
-                tf('table.topology_sources.top', 'Top'),
-                tf('table.topology_sources.bottom', 'Bottom'),
-                tf('table.topology_sources.source_type', 'Source type'),
-                tf('table.topology_sources.volume_key', 'Volume'),
-                tf('table.topology_sources.label', 'Label'),
-                tf('table.topology_sources.show', 'Show')
-            ],
-            columns: () => [
-                { data: 'top', type: 'numeric' },
-                { data: 'bottom', type: 'numeric' },
-                {
-                    data: 'sourceType',
-                    type: 'dropdown',
-                    source: TOPOLOGY_SOURCE_TYPE_OPTIONS,
-                    strict: false,
-                    allowInvalid: true
-                },
-                {
-                    data: 'volumeKey',
-                    type: 'dropdown',
-                    source: TOPOLOGY_SOURCE_VOLUME_OPTIONS,
-                    strict: false,
-                    allowInvalid: true,
-                    renderer: topologyVolumeRenderer
-                },
-                { data: 'label', type: 'text' },
-                { data: 'show', type: 'checkbox', className: 'htCenter' }
-            ],
-            requiredFields: ['top', 'bottom', 'sourceType', 'volumeKey'],
-            numericFields: TOPOLOGY_SOURCE_NUMERIC_FIELDS,
-            sampleKeyFields: ['label'],
-            afterChangeIgnoreSources: ['loadData', 'normalize'],
-            triggersSchematicRender: false,
-            enableRowSelection: false,
-            mapRowsForStore: (rows) => mergeScenarioSourceRows(domainState.topologySources, rows),
-            buildDefaultRow: () => ({
-                top: 9000,
-                bottom: 9000,
-                sourceType: 'formation_inflow',
-                volumeKey: NODE_KIND_FORMATION_ANNULUS,
-                fromVolumeKey: null,
-                toVolumeKey: null,
-                label: t('defaults.new_topology_source'),
-                show: true
-            })
-        };
+        return buildTopologySourceSchema(domainState, {
+            t,
+            tf
+        });
     }
 
     if (type === 'topologyBreakout') {
-        const topologyVolumeRenderer = buildTopologySourceVolumeRenderer();
-        return {
-            getData: () => filterScenarioBreakoutRows(domainState.topologySources),
-            prepareData: (rows) => rows.map((row) => ({
-                ...row,
-                show: row?.show !== false
-            })),
-            colHeaders: () => [
-                tf('table.topology_sources.top', 'Top'),
-                tf('table.topology_sources.bottom', 'Bottom'),
-                tf('table.topology_sources.from_volume_key', 'From volume'),
-                tf('table.topology_sources.to_volume_key', 'To volume'),
-                tf('table.topology_sources.label', 'Label'),
-                tf('table.topology_sources.show', 'Show')
-            ],
-            columns: () => [
-                { data: 'top', type: 'numeric' },
-                { data: 'bottom', type: 'numeric' },
-                {
-                    data: 'fromVolumeKey',
-                    type: 'dropdown',
-                    source: TOPOLOGY_SOURCE_VOLUME_OPTIONS,
-                    strict: false,
-                    allowInvalid: true,
-                    renderer: topologyVolumeRenderer
-                },
-                {
-                    data: 'toVolumeKey',
-                    type: 'dropdown',
-                    source: TOPOLOGY_SOURCE_VOLUME_OPTIONS,
-                    strict: false,
-                    allowInvalid: true,
-                    renderer: topologyVolumeRenderer
-                },
-                { data: 'label', type: 'text' },
-                { data: 'show', type: 'checkbox', className: 'htCenter' }
-            ],
-            requiredFields: ['top', 'bottom', 'fromVolumeKey', 'toVolumeKey'],
-            numericFields: TOPOLOGY_SOURCE_NUMERIC_FIELDS,
-            sampleKeyFields: ['label'],
-            afterChangeIgnoreSources: ['loadData', 'normalize'],
-            triggersSchematicRender: false,
-            enableRowSelection: false,
-            mapRowsForStore: (rows) => mergeScenarioBreakoutRows(domainState.topologySources, rows),
-            buildDefaultRow: () => ({
-                top: 9000,
-                bottom: 9000,
-                sourceType: SOURCE_KIND_SCENARIO,
-                volumeKey: null,
-                fromVolumeKey: 'ANNULUS_A',
-                toVolumeKey: 'ANNULUS_B',
-                label: t('defaults.new_topology_breakout'),
-                show: true
-            })
-        };
+        return buildTopologyBreakoutSchema(domainState, {
+            t,
+            tf
+        });
     }
 
     if (type === 'box') {
@@ -1244,7 +1058,9 @@ export function useTableController(tableType, tabKey = tableType) {
 
     const schema = computed(() => {
         languageToken.value;
-        return buildTableSchema(tableType, domainState);
+        const nextSchema = buildTableSchema(tableType, domainState);
+        enforceTableSchemaDataContract(tableType, nextSchema);
+        return nextSchema;
     });
 
     const tableData = computed(() => {

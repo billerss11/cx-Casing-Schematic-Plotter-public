@@ -1,6 +1,7 @@
 import { useProjectDataStore } from '@/stores/projectDataStore.js';
 import { useInteractionStore } from '@/stores/interactionStore.js';
 import { usePlotElementsStore } from '@/stores/plotElementsStore.js';
+import { useWorkspaceStore } from '@/stores/workspaceStore.js';
 import { pinia } from '@/stores/pinia.js';
 import { setTableHighlight } from './hot.js';
 import {
@@ -19,10 +20,15 @@ import {
 } from '@/composables/useSchematicInteraction.js';
 import { normalizeRowId } from '@/utils/rowIdentity.js';
 import { resolveSelectionRowTarget } from '@/app/selectionRowLocator.js';
+import {
+    resolveDomainEntryByEntityType,
+    resolveDomainTableTarget
+} from '@/workspace/domainRegistry.js';
 
 const projectDataStore = useProjectDataStore(pinia);
 const interactionStore = useInteractionStore(pinia);
 const plotElementsStore = usePlotElementsStore(pinia);
+const workspaceStore = useWorkspaceStore(pinia);
 let projectStorePromise = null;
 const state = {
     get casingData() {
@@ -91,17 +97,6 @@ const PIPE_TABLE_TYPES = Object.freeze({
     tubing: 'tubing',
     drillString: 'drillString'
 });
-const INTERACTION_TABLE_TARGETS = Object.freeze({
-    casing: { tableType: 'casing', tabKey: 'casing' },
-    tubing: { tableType: 'tubing', tabKey: 'tubing' },
-    drillString: { tableType: 'drillString', tabKey: 'drillString' },
-    line: { tableType: 'line', tabKey: 'lines' },
-    box: { tableType: 'box', tabKey: 'boxes' },
-    marker: { tableType: 'marker', tabKey: 'markers' },
-    plug: { tableType: 'plug', tabKey: 'plugs' },
-    fluid: { tableType: 'fluid', tabKey: 'fluids' },
-    equipment: { tableType: 'equipment', tabKey: 'equipment' }
-});
 
 function resolveProjectStore() {
     if (!projectStorePromise) {
@@ -116,18 +111,8 @@ function normalizeSelectionType(type) {
     const normalized = String(type ?? '').trim().toLowerCase();
     if (!normalized) return null;
     if (normalized === 'pipe') return 'pipe';
-    if (normalized === 'drillstring' || normalized === 'drill-string' || normalized === 'drill_string') {
-        return 'drillString';
-    }
-    if (normalized === 'casing') return 'casing';
-    if (normalized === 'tubing') return 'tubing';
-    if (normalized === 'line') return 'line';
-    if (normalized === 'box') return 'box';
-    if (normalized === 'marker') return 'marker';
-    if (normalized === 'plug') return 'plug';
-    if (normalized === 'fluid') return 'fluid';
-    if (normalized === 'equipment') return 'equipment';
-    return null;
+    const domainEntry = resolveDomainEntryByEntityType(normalized);
+    return domainEntry?.canonicalEntityType ?? null;
 }
 
 function normalizeInteractionAction(action) {
@@ -226,7 +211,7 @@ function focusTableForEntity(entity) {
     const normalizedEntity = normalizeInteractionEntity(entity);
     if (!normalizedEntity) return;
 
-    const target = INTERACTION_TABLE_TARGETS[normalizedEntity.type];
+    const target = resolveDomainTableTarget(normalizedEntity.type);
     if (!target) return;
 
     setTablesAccordionOpen(true);
@@ -462,6 +447,7 @@ export function clearSelection(type, options = {}) {
     if (shouldClearAll) {
         state.interaction.lockedEntity = null;
         state.interaction.hoveredEntity = null;
+        workspaceStore.clearSelectedHierarchyRef();
         hidePlotTooltip();
         if (!options.deferSync) {
             syncSelectionIndicators();

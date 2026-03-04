@@ -6,6 +6,7 @@ import {
   isFinitePoint,
   resolveScreenFrameAtMD,
 } from './directionalProjection.js';
+import { resolveEquipmentTypeSemantics } from './equipmentModelShared.js';
 
 const DEFAULT_PACKER_HEIGHT = 15;
 const ORPHAN_COLOR = 'red';
@@ -57,18 +58,6 @@ const frameContext = computed(() => ({
   maxProjectedRadius: 0,
 }));
 
-function normalizeEquipmentType(type) {
-  const normalized = String(type ?? '').trim().toLowerCase();
-  if (normalized === 'packer') return 'packer';
-  if (normalized === 'bridge plug' || normalized === 'bridge_plug' || normalized === 'bridge-plug') {
-    return 'bridge-plug';
-  }
-  if (normalized === 'safety valve' || normalized === 'safety_valve' || normalized === 'safety-valve') {
-    return 'safety-valve';
-  }
-  return '';
-}
-
 function resolveSafetyValveHalfHeight(startPoint, endPoint, scale) {
   const tubingInnerDiameterPx = Math.hypot(endPoint[0] - startPoint[0], endPoint[1] - startPoint[1]);
   const rawHalfHeight = (tubingInnerDiameterPx * 0.3) * scale;
@@ -87,9 +76,9 @@ const equipmentShapes = computed(() => {
     const md = clamp(equip.depth, 0, props.totalMd);
     const frame = resolveScreenFrameAtMD(md, frameContext.value);
     if (!frame) return;
-    const equipmentType = normalizeEquipmentType(equip?.type);
+    const semantics = resolveEquipmentTypeSemantics(equip?.type);
 
-    if (equipmentType === 'packer' || equipmentType === 'bridge-plug') {
+    if (semantics.isPackerLike) {
       const isOrphaned = equip.isOrphaned === true;
       const sealInnerDiameter = Number(equip.sealInnerDiameter ?? equip.tubingParentOD);
       const sealOuterDiameter = Number(equip.sealOuterDiameter ?? equip.parentInnerDiameter);
@@ -159,7 +148,7 @@ const equipmentShapes = computed(() => {
           });
         });
       }
-    } else if (equipmentType === 'safety-valve') {
+    } else if (semantics.isSafetyValve) {
       const isOrphaned = equip.tubingParentIndex === null;
       const tubingID = Number(equip.tubingParentID);
       if (!Number.isFinite(tubingID)) return;

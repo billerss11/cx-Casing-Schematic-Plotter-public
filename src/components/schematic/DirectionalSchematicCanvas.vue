@@ -18,8 +18,7 @@ import {
   hasInteractiveSchematicTarget,
   isSameInteractionEntity,
   normalizeInteractionEntity,
-  resolveTopmostInteractionEntity,
-  resolveSvgPointerPosition
+  resolveTopmostInteractionEntity
 } from '@/composables/useSchematicInteraction.js';
 import {
   createContext as createPhysicsContext,
@@ -52,7 +51,10 @@ import { useDepthCursorOverlay } from '@/composables/useDepthCursorOverlay.js';
 import { useDepthCursorLayerDom } from '@/composables/useDepthCursorLayerDom.js';
 import { useCrossSectionDepthInteraction } from '@/composables/useCrossSectionDepthInteraction.js';
 import { useMagnifierOverlayDom } from '@/composables/useMagnifierOverlayDom.js';
+import { useCameraPanSession } from '@/composables/useCameraPanSession.js';
+import { createSchematicPointerMapping } from '@/composables/useSchematicPointerMapping.js';
 import { solveOptimalFigureHeight } from '@/utils/autoFitMath.js';
+import { buildCameraTransform, clampZoom, invertCameraPoint } from '@/utils/svgTransformMath.js';
 import {
   DIRECTIONAL_BASE_SVG_WIDTH,
   DIRECTIONAL_MARGIN,
@@ -101,8 +103,14 @@ const magnifierIdToken = Math.random().toString(36).slice(2, 9);
 const interactionStore = useInteractionStore();
 const viewConfigStore = useViewConfigStore();
 
+const IDENTITY_CAMERA_STATE = Object.freeze({
+  scale: 1,
+  translateX: 0,
+  translateY: 0
+});
 const containerRef = ref(null);
 const svgRef = ref(null);
+const sceneRootRef = ref(null);
 const containerWidth = ref(900);
 const containerHeight = ref(720);
 const tooltipVisible = ref(false);
@@ -131,8 +139,13 @@ const directionalRenderModel = ref({
   intervals: []
 });
 const tooltipPointerResolver = createClientPointerResolver();
+const TOOLTIP_STALE_HIDE_MS = 48;
+const DIRECTIONAL_WHEEL_ZOOM_SENSITIVITY = 0.0025;
+const DIRECTIONAL_WHEEL_ZOOM_MIN = 0.25;
+const DIRECTIONAL_WHEEL_ZOOM_MAX = 4;
 let resizeObserver = null;
 let directionalRenderRequestVersion = 0;
+let lastTooltipHoverAt = 0;
 
 const lastAutoFitSignature = computed(() => (
   typeof viewConfigStore.uiState?.lastDirectionalAutoFitSignature === 'string'
@@ -524,6 +537,19 @@ watch(dataAspectRatioValue, (nextAspect) => {
 }, { immediate: true });
 
 const plotWidthValue = computed(() => Math.max(10, svgWidthValue.value - margin.left - margin.right));
+const displayScaleValue = computed(() => {
+  const nextContainerWidth = Number(containerWidth.value);
+  const nextContainerHeight = Number(containerHeight.value);
+  if (!Number.isFinite(nextContainerWidth) || nextContainerWidth <= 0) return 1;
+  if (!Number.isFinite(nextContainerHeight) || nextContainerHeight <= 0) return 1;
+  if (!Number.isFinite(svgWidthValue.value) || svgWidthValue.value <= 0) return 1;
+  if (!Number.isFinite(figHeightValue.value) || figHeightValue.value <= 0) return 1;
+
+  const widthRatio = nextContainerWidth / svgWidthValue.value;
+  return widthRatio > 1 ? widthRatio : 1;
+});
+const displayWidthValue = computed(() => Math.round(svgWidthValue.value * displayScaleValue.value));
+const displayHeightValue = computed(() => Math.round(figHeightValue.value * displayScaleValue.value));
 
 const xScale = computed(() => d3.scaleLinear()
   .domain([minXData.value, maxXData.value])
@@ -683,6 +709,9 @@ const depthCursor = useDepthCursorOverlay({
   plotTopY,
   plotBottomY,
   restrictXToPlot: false,
+  resolvePointerFromClient: ({ localPointer }) => (
+    invertCameraPoint(localPointer, directionalCameraState.value) ?? localPointer
+  ),
   resolveDepth: (pointer) => {
     const tvd = Number(yScale.value.invert(pointer?.y));
     if (!Number.isFinite(tvd)) return null;
@@ -737,6 +766,27 @@ const magnifierOverlay = useMagnifierOverlayDom({
 });
 const magnifierSceneId = `directional-scene-${magnifierIdToken}`;
 const magnifierClipPathId = `directional-magnifier-clip-${magnifierIdToken}`;
+const isCameraTransformEnabled = computed(() => (
+  viewConfigStore.uiState?.useCameraTransform === true &&
+  viewConfigStore.uiState?.cameraTransformDirectional === true
+));
+const directionalCameraState = computed(() => (
+  isCameraTransformEnabled.value
+    ? (viewConfigStore.uiState?.directionalCamera ?? IDENTITY_CAMERA_STATE)
+    : IDENTITY_CAMERA_STATE
+));
+const sceneRootTransform = computed(() => buildCameraTransform(directionalCameraState.value));
+const pointerMapping = createSchematicPointerMapping({
+  svgElement: svgRef,
+  resolveCamera: () => directionalCameraState.value
+});
+const cameraPanSession = useCameraPanSession({
+  enabled: isCameraTransformEnabled,
+  panBy: (deltaX, deltaY) => {
+    viewConfigStore.panDirectionalCameraBy(deltaX, deltaY);
+  }
+});
+const isCameraPanActive = cameraPanSession.isPanActive;
 
 const depthCursorLineSegment = computed(() => {
   if (!depthCursor.visible.value) return null;
@@ -848,7 +898,8 @@ useDepthCursorLayerDom({
 });
 
 function resolveCrossSectionDepthFromClient(clientX, clientY) {
-  const pointer = resolveSvgPointerPosition(svgRef.value, { clientX, clientY });
+  const pointerResult = pointerMapping.resolvePointer({ clientX, clientY });
+  const pointer = pointerResult?.canonicalPoint;
   if (!pointer) return null;
   const nearestMD = Number(resolveNearestMDFromPointer(pointer));
   if (!Number.isFinite(nearestMD)) return null;
@@ -864,7 +915,7 @@ const crossSectionDepthInteraction = useCrossSectionDepthInteraction({
   setDepth: (depth) => viewConfigStore.setCursorDepth(depth),
   hoverIntervalMs: 33,
   depthEpsilon: 0.01,
-  unlockOnMouseLeave: true
+  unlockOnMouseLeave: false
 });
 
 function executeSmartAutoFit(options = {}) {
@@ -905,6 +956,17 @@ function executeSmartAutoFit(options = {}) {
   setLastAutoFitSignature(signature);
   return true;
 }
+
+const directionalFitToDataRequestCount = computed(() => (
+  Number(viewConfigStore.uiState?.directionalFitToDataRequestCount) || 0
+));
+
+watch(directionalFitToDataRequestCount, async (nextCount, previousCount) => {
+  if (!Number.isFinite(nextCount) || nextCount <= 0) return;
+  if (Object.is(nextCount, previousCount)) return;
+  await nextTick();
+  executeSmartAutoFit({ force: true });
+});
 
 watch(trajectorySignature, (nextSignature, previousSignature) => {
   if (!nextSignature || !previousSignature || nextSignature === previousSignature) return;
@@ -948,16 +1010,16 @@ function resolvePointerPosition(event) {
   const pointer = tooltipPointerResolver.resolveFromClient(
     clientX,
     clientY,
-    svgWidthValue.value,
-    figHeightValue.value
+    displayWidthValue.value,
+    displayHeightValue.value
   );
   if (!pointer) {
     return { x: 8, y: 8 };
   }
 
   return {
-    x: clamp(pointer.x, 0, svgWidthValue.value),
-    y: clamp(pointer.y, 0, figHeightValue.value)
+    x: clamp(pointer.x, 0, displayWidthValue.value),
+    y: clamp(pointer.y, 0, displayHeightValue.value)
   };
 }
 
@@ -971,11 +1033,13 @@ function showTooltip(model, event) {
   tooltipX.value = pointer.x;
   tooltipY.value = pointer.y;
   tooltipVisible.value = true;
+  lastTooltipHoverAt = Date.now();
 }
 
 function hideTooltip() {
   tooltipVisible.value = false;
   tooltipModel.value = null;
+  lastTooltipHoverAt = 0;
 }
 
 function normalizePipeType(pipeType) {
@@ -1031,6 +1095,7 @@ function handleHoverPipe(entity, event) {
 
 function handleLeavePipe() {
   dispatchSchematicInteraction('leave', { type: 'pipe' });
+  hideTooltip();
 }
 
 function resolveFluidLayerAtDepth(depth, fluidIndex) {
@@ -1049,7 +1114,8 @@ function resolveFluidLayerAtDepth(depth, fluidIndex) {
 
 function resolveFluidTooltipMeta({ index, event }) {
   if (!Number.isInteger(index)) return null;
-  const pointer = resolveSvgPointerPosition(svgRef.value, event);
+  const pointerResult = pointerMapping.resolvePointer(event);
+  const pointer = pointerResult?.canonicalPoint;
   if (!pointer) return null;
 
   const depth = Number(resolveNearestMDFromPointer(pointer));
@@ -1134,7 +1200,32 @@ const handleSelectEquipment = equipmentHandlers.handleSelect;
 const handleHoverEquipment = equipmentHandlers.handleHover;
 const handleLeaveEquipment = equipmentHandlers.handleLeave;
 
+function resetCameraPanState() {
+  cameraPanSession.resetPan();
+}
+
+function startCameraPan(event) {
+  return cameraPanSession.startPan(event);
+}
+
+function updateCameraPanFromPointer(event) {
+  cameraPanSession.updatePan(event);
+}
+
+function handleCanvasPointerUp(event) {
+  const finishResult = cameraPanSession.finishPan(event);
+  if (finishResult?.shouldProcessClick) {
+    handleCanvasBackgroundClick(event);
+  }
+}
+
+function handleCanvasPointerDown(event) {
+  if (hasInteractiveSchematicTarget(event?.target)) return;
+  startCameraPan(event);
+}
+
 function handleCanvasMouseLeave() {
+  resetCameraPanState();
   handleLeavePipe();
   handleLeaveLine();
   handleLeaveBox();
@@ -1145,9 +1236,18 @@ function handleCanvasMouseLeave() {
   crossSectionDepthInteraction.handleMouseLeave();
   depthCursor.hide();
   magnifierOverlay.handleMouseLeave();
+  hideTooltip();
+}
+
+function hideStaleTooltipOnMouseMove() {
+  if (!tooltipVisible.value || lastTooltipHoverAt <= 0) return;
+  if ((Date.now() - lastTooltipHoverAt) <= TOOLTIP_STALE_HIDE_MS) return;
+  hideTooltip();
 }
 
 function handleCanvasMouseMove(event) {
+  if (isCameraPanActive.value) return;
+  hideStaleTooltipOnMouseMove();
   if (crossSectionVisible.value) {
     crossSectionDepthInteraction.handleHover(event);
   }
@@ -1162,6 +1262,43 @@ function handleCanvasScroll() {
     depthCursor.handleScroll();
   }
   magnifierOverlay.handleScroll();
+}
+
+function handleCanvasWheel(event) {
+  if (!isCameraTransformEnabled.value) return;
+  if (isCameraPanActive.value) return;
+
+  const pointerResult = pointerMapping.resolvePointer(event);
+  const pointer = pointerResult?.svgPoint;
+  const canonicalPoint = pointerResult?.canonicalPoint;
+  if (!pointer || !canonicalPoint) return;
+
+  const currentScale = Number(directionalCameraState.value?.scale);
+  const deltaY = Number(event?.deltaY);
+  const zoomDelta = Number.isFinite(deltaY)
+    ? (-deltaY * DIRECTIONAL_WHEEL_ZOOM_SENSITIVITY)
+    : 0;
+  if (!Number.isFinite(currentScale) || zoomDelta === 0) return;
+
+  const nextScale = clampZoom(currentScale + zoomDelta, {
+    min: DIRECTIONAL_WHEEL_ZOOM_MIN,
+    max: DIRECTIONAL_WHEEL_ZOOM_MAX,
+    fallback: currentScale
+  });
+  if (Object.is(nextScale, currentScale)) return;
+
+  const nextTranslateX = pointer.x - (canonicalPoint.x * nextScale);
+  const nextTranslateY = pointer.y - (canonicalPoint.y * nextScale);
+  viewConfigStore.setDirectionalCameraZoom(nextScale);
+  viewConfigStore.setDirectionalCameraPan({
+    translateX: nextTranslateX,
+    translateY: nextTranslateY
+  });
+
+  if (typeof event?.preventDefault === 'function') {
+    event.preventDefault();
+  }
+  handleCanvasScroll();
 }
 
 function clearAllSelections() {
@@ -1200,6 +1337,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  resetCameraPanState();
   setLastAutoFitSignature(trajectorySignature.value);
   directionalRenderRequestVersion += 1;
   cancelRenderModelWorkerJobs();
@@ -1221,15 +1359,22 @@ defineExpose({
     aria-label="Directional schematic canvas"
     @mousemove="handleCanvasMouseMove"
     @scroll.passive="handleCanvasScroll"
+    @wheel="handleCanvasWheel"
+    @pointerdown="handleCanvasPointerDown"
+    @pointermove="updateCameraPanFromPointer"
+    @pointerup="handleCanvasPointerUp"
+    @pointercancel="handleCanvasPointerUp"
     @mouseleave="handleCanvasMouseLeave"
   >
     <div v-if="isRenderModelLoading" class="schematic-canvas__loading-overlay">Updating...</div>
     <svg
       ref="svgRef"
       class="schematic-canvas__svg"
-      :width="svgWidthValue"
-      :height="figHeightValue"
+      :width="displayWidthValue"
+      :height="displayHeightValue"
       :viewBox="`0 0 ${svgWidthValue} ${figHeightValue}`"
+      :data-export-width="svgWidthValue"
+      :data-export-height="figHeightValue"
       preserveAspectRatio="xMidYMid meet"
       @click="handleCanvasBackgroundClick"
     >
@@ -1247,7 +1392,7 @@ defineExpose({
         </clipPath>
       </defs>
 
-      <g :id="magnifierSceneId">
+      <g ref="sceneRootRef" :id="magnifierSceneId" :transform="sceneRootTransform">
         <DirectionalAxisLayer
         :x-scale="xScale"
         :y-scale="yScale"
@@ -1475,8 +1620,8 @@ defineExpose({
       :model="tooltipModel"
       :x="tooltipX"
       :y="tooltipY"
-      :container-width="svgWidthValue"
-      :container-height="figHeightValue"
+      :container-width="displayWidthValue"
+      :container-height="displayHeightValue"
     />
   </div>
 </template>

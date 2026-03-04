@@ -217,22 +217,39 @@ function resolveWellDataById(wellId) {
 }
 
 const canRenameContextNode = computed(() => isRenamableNode(contextMenuNode.value));
-const contextMenuItems = computed(() => ([
-  {
-    label: 'Rename',
-    icon: 'pi pi-pencil',
-    disabled: !canRenameContextNode.value,
-    command: () => {
-      startInlineRename(contextMenuNode.value);
+const canDeleteContextNode = computed(() => resolveNodeKind(contextMenuNode.value) === 'item');
+const contextMenuItems = computed(() => {
+  const items = [
+    {
+      label: 'Rename',
+      icon: 'pi pi-pencil',
+      disabled: !canRenameContextNode.value,
+      command: () => {
+        startInlineRename(contextMenuNode.value);
+      }
     }
+  ];
+
+  if (canDeleteContextNode.value) {
+    items.push({
+      label: 'Delete',
+      icon: 'pi pi-trash',
+      command: () => {
+        handleDelete();
+      }
+    });
   }
-]));
+
+  return items;
+});
 
 function handleNodeContextMenu(event, node) {
   if (!isRenamableNode(node)) return;
   setSelectionByKey(node.key);
   contextMenuNode.value = node;
-  contextMenuRef.value?.show?.(event);
+  nextTick(() => {
+    contextMenuRef.value?.show?.(event);
+  });
 }
 
 function focusRenameInput() {
@@ -341,7 +358,6 @@ const selectedDomainData = computed(() => {
 });
 const canAddItem = computed(() => selectedItemData.value !== null || selectedDomainData.value !== null);
 const canDuplicateItem = computed(() => selectedItemData.value !== null);
-const canDeleteItem = computed(() => selectedItemData.value !== null);
 const selectedItemRows = computed(() => {
   const item = selectedItemData.value;
   if (!item) return [];
@@ -425,6 +441,41 @@ function handleDelete() {
   clearSelection('all');
 }
 
+function isTextInputTarget(target) {
+  if (!target || typeof target !== 'object') return false;
+  const tagName = String(target.tagName ?? '').toLowerCase();
+  if (tagName === 'input' || tagName === 'textarea' || tagName === 'select') return true;
+  return target.isContentEditable === true;
+}
+
+function shouldHandleDockShortcut(event) {
+  if (!event || typeof event !== 'object') return false;
+  if (event.defaultPrevented) return false;
+  if (event.ctrlKey || event.metaKey || event.altKey) return false;
+  if (editingNodeKey.value) return false;
+  if (isTextInputTarget(event.target)) return false;
+  return true;
+}
+
+function handleDockKeydown(event) {
+  if (!shouldHandleDockShortcut(event)) return;
+
+  const key = String(event?.key ?? '').toLowerCase();
+  if (key === 'delete') {
+    if (!selectedItemData.value) return;
+    event.preventDefault();
+    handleDelete();
+    return;
+  }
+
+  if (key === 'f2') {
+    const node = selectedNode.value;
+    if (!isRenamableNode(node)) return;
+    event.preventDefault();
+    startInlineRename(node);
+  }
+}
+
 async function handleMove(direction) {
   const itemData = selectedItemData.value;
   if (!itemData) return;
@@ -480,18 +531,16 @@ watch(
 </script>
 
 <template>
-  <section class="left-hierarchy-dock" role="complementary">
+  <section class="left-hierarchy-dock" role="complementary" @keydown="handleDockKeydown">
     <header class="left-hierarchy-dock__header">
       <h3 class="left-hierarchy-dock__title">Project Hierarchy</h3>
       <LeftHierarchyDockSectionActions
         :can-add="canAddItem"
         :can-duplicate="canDuplicateItem"
-        :can-delete="canDeleteItem"
         :can-move-up="canMoveUp"
         :can-move-down="canMoveDown"
         @add="handleAdd"
         @duplicate="handleDuplicate"
-        @delete="handleDelete"
         @move-up="handleMove('up')"
         @move-down="handleMove('down')"
       />
@@ -549,8 +598,8 @@ watch(
 .left-hierarchy-dock__header {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: var(--spacing-md);
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm) var(--spacing-md);
   border-bottom: 1px solid color-mix(in srgb, var(--line) 90%, transparent);
 }
 
@@ -564,13 +613,44 @@ watch(
 }
 
 .left-hierarchy-dock__content {
-  padding: var(--spacing-sm) var(--spacing-md) var(--spacing-md);
+  padding: var(--spacing-xs) var(--spacing-sm) var(--spacing-sm);
   overflow: auto;
   min-height: 0;
 }
 
 .left-hierarchy-dock__tree {
   min-height: 100%;
+  font-size: 0.84rem;
+}
+
+.left-hierarchy-dock__tree :deep(.p-tree-root) {
+  padding: 0;
+}
+
+.left-hierarchy-dock__tree :deep(.p-tree-node) {
+  margin: 0;
+}
+
+.left-hierarchy-dock__tree :deep(.p-tree-node-content) {
+  gap: var(--spacing-xs);
+  min-height: 1.35rem;
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+}
+
+.left-hierarchy-dock__tree :deep(.p-tree-node-label) {
+  padding: 0;
+  line-height: 1.2;
+}
+
+.left-hierarchy-dock__tree :deep(.p-tree-node-children) {
+  padding-inline-start: 0.95rem;
+}
+
+.left-hierarchy-dock__tree :deep(.p-tree-node-toggle-button) {
+  width: 1.1rem;
+  height: 1.1rem;
+  margin-inline-end: 2px;
 }
 
 .left-hierarchy-dock__node-label {

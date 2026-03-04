@@ -47,6 +47,15 @@ export function normalizeEquipmentTypeKey(value) {
     return token;
 }
 
+export function resolveEquipmentTypeLabel(typeValue, fallbackValue = null) {
+    const definition = resolveEquipmentDefinition(typeValue);
+    const canonicalLabel = String(definition?.schema?.label ?? '').trim();
+    if (canonicalLabel) return canonicalLabel;
+
+    const fallback = fallbackValue === null ? typeValue : fallbackValue;
+    return String(fallback ?? '').trim();
+}
+
 export function resolveEquipmentDefinitionByKey(typeKey) {
     const normalizedTypeKey = String(typeKey ?? '').trim();
     if (!normalizedTypeKey) return null;

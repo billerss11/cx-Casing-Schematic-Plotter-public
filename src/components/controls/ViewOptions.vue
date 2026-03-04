@@ -335,6 +335,6 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .control-error {
-  color: var(--p-red-500, #b42318);
+  color: var(--color-status-error-text);
 }
 </style>

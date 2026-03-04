@@ -20,40 +20,37 @@ import TrajectoryTablePane from './panes/TrajectoryTablePane.vue';
 import IntervalsTablePane from './panes/IntervalsTablePane.vue';
 import { activeTableTabKey, setActiveTableTabKey } from './panes/tablePaneState.js';
 import { useViewConfigStore } from '@/stores/viewConfigStore.js';
+import { listVisibleDomainTableEntries } from '@/workspace/domainRegistry.js';
 
 const viewConfigStore = useViewConfigStore();
 const config = viewConfigStore.config;
 
-const isDirectionalView = computed(() => config.viewMode === 'directional');
-const operationPhase = computed(() => (
-  String(config.operationPhase ?? '').trim().toLowerCase() === 'drilling'
-    ? 'drilling'
-    : 'production'
+const tableDomainContext = computed(() => ({
+  operationPhase: config.operationPhase,
+  viewMode: config.viewMode
+}));
+const visibleTableEntries = computed(() => listVisibleDomainTableEntries(tableDomainContext.value));
+const isDirectionalView = computed(() => (
+  visibleTableEntries.value.some((entry) => entry?.key === 'trajectory')
 ));
-const showTubingTable = computed(() => operationPhase.value !== 'drilling');
-const showDrillStringTable = computed(() => operationPhase.value === 'drilling');
-const showEquipmentTable = computed(() => operationPhase.value === 'production');
+const showTubingTable = computed(() => (
+  visibleTableEntries.value.some((entry) => entry?.key === 'tubing')
+));
+const showDrillStringTable = computed(() => (
+  visibleTableEntries.value.some((entry) => entry?.key === 'drillString')
+));
+const showEquipmentTable = computed(() => (
+  visibleTableEntries.value.some((entry) => entry?.key === 'equipment')
+));
 
 const baseTabKeys = computed(() => {
-  const keys = ['casing'];
-  if (showTubingTable.value) {
-    keys.push('tubing');
-  }
-  if (showEquipmentTable.value) {
-    keys.push('equipment');
-  }
-  if (showDrillStringTable.value) {
-    keys.push('drillString');
-  }
-  keys.push('lines', 'plugs', 'fluids', 'markers', 'topologySources', 'topologyBreakouts', 'boxes');
-  return keys;
+  return visibleTableEntries.value
+    .map((entry) => String(entry?.table?.tabKey ?? '').trim())
+    .filter((tabKey) => tabKey.length > 0);
 });
 
 const tabKeys = computed(() => {
   const keys = [...baseTabKeys.value];
-  if (isDirectionalView.value) {
-    keys.push('trajectory');
-  }
   if (config.showPhysicsDebug === true) {
     keys.push('physicsIntervals');
   }

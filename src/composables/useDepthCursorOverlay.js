@@ -6,6 +6,13 @@ import {
 
 const DEFAULT_POINTER_EPSILON = 0.25;
 
+function toFinitePointer(value) {
+  const x = Number(value?.x);
+  const y = Number(value?.y);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  return { x, y };
+}
+
 export function useDepthCursorOverlay(options = {}) {
   const visible = ref(false);
   const x = ref(0);
@@ -47,11 +54,20 @@ export function useDepthCursorOverlay(options = {}) {
 
     const svgWidth = pointerResolver.resolveSvgWidth(unref(options.svgWidth));
     const svgHeight = pointerResolver.resolveSvgHeight(unref(options.svgHeight));
-    const pointer = pointerResolver.resolveFromClient(clientX, clientY, svgWidth, svgHeight);
-    if (!pointer) {
+    const localPointer = pointerResolver.resolveFromClient(clientX, clientY, svgWidth, svgHeight);
+    if (!localPointer) {
       hide();
       return;
     }
+
+    const resolvedPointer = typeof options.resolvePointerFromClient === 'function'
+      ? options.resolvePointerFromClient({
+          clientX,
+          clientY,
+          localPointer
+        })
+      : null;
+    const pointer = toFinitePointer(resolvedPointer) ?? localPointer;
 
     const restrictXToPlot = options.restrictXToPlot !== false;
     const left = toFiniteNumber(unref(options.plotLeftX), 0);

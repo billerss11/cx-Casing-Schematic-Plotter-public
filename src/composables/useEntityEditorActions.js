@@ -1,4 +1,5 @@
 import { useProjectDataStore } from '@/stores/projectDataStore.js';
+import { useProjectStore } from '@/stores/projectStore.js';
 import { createRowId, getRowIdPrefixForKey } from '@/utils/rowIdentity.js';
 import { resolveSelectionRowTarget } from '@/app/selectionRowLocator.js';
 import {
@@ -7,31 +8,12 @@ import {
   mergeHierarchyDomainRows,
   resolveHierarchyRowsForDomain
 } from '@/workspace/hierarchyDomainMeta.js';
-
-const ENTITY_TYPE_TO_DOMAIN_KEY = Object.freeze({
-  casing: 'casing',
-  tubing: 'tubing',
-  drillString: 'drillString',
-  drillstring: 'drillString',
-  equipment: 'equipment',
-  line: 'lines',
-  lines: 'lines',
-  plug: 'plugs',
-  plugs: 'plugs',
-  fluid: 'fluids',
-  fluids: 'fluids',
-  marker: 'markers',
-  markers: 'markers',
-  box: 'boxes',
-  boxes: 'boxes',
-  topologySource: 'topologySources',
-  topologysource: 'topologySources',
-  topologySources: 'topologySources',
-  topologyBreakout: 'topologyBreakouts',
-  topologybreakout: 'topologyBreakouts',
-  topologyBreakouts: 'topologyBreakouts',
-  trajectory: 'trajectory'
-});
+import {
+  resolveCanonicalEntityTypeForDomain,
+  resolveDomainKeyFromEntityType
+} from '@/workspace/domainRegistry.js';
+const DELETE_UNDO_STACK_MAX = 50;
+const deleteUndoStack = [];
 
 function toSafeArray(value) {
   return Array.isArray(value) ? value : [];
@@ -39,17 +21,6 @@ function toSafeArray(value) {
 
 function normalizeToken(value) {
   return String(value ?? '').trim();
-}
-
-function getCanonicalEntityTypeForDomain(domainKey) {
-  if (domainKey === 'lines') return 'line';
-  if (domainKey === 'plugs') return 'plug';
-  if (domainKey === 'fluids') return 'fluid';
-  if (domainKey === 'markers') return 'marker';
-  if (domainKey === 'boxes') return 'box';
-  if (domainKey === 'topologySources') return 'topologySource';
-  if (domainKey === 'topologyBreakouts') return 'topologyBreakout';
-  return domainKey;
 }
 
 function setNestedValue(target = {}, pathTokens = [], value) {
@@ -86,14 +57,41 @@ function clampIndex(index, maxInclusive) {
   return parsed;
 }
 
+function cloneRowSnapshot(row) {
+  if (!row || typeof row !== 'object') return null;
+  if (typeof structuredClone === 'function') {
+    try {
+      return structuredClone(row);
+    } catch (_error) {
+      // Fallback to JSON clone below.
+    }
+  }
+  try {
+    return JSON.parse(JSON.stringify(row));
+  } catch (_error) {
+    return { ...row };
+  }
+}
+
+function pushDeleteUndoEntry(entry) {
+  if (!entry || typeof entry !== 'object') return;
+  deleteUndoStack.push(entry);
+  if (deleteUndoStack.length > DELETE_UNDO_STACK_MAX) {
+    deleteUndoStack.splice(0, deleteUndoStack.length - DELETE_UNDO_STACK_MAX);
+  }
+}
+
+export function clearDeleteUndoHistory() {
+  deleteUndoStack.length = 0;
+}
+
 export function resolveEntityEditorDomainKey(entityType) {
-  const token = normalizeToken(entityType);
-  if (!token) return null;
-  return ENTITY_TYPE_TO_DOMAIN_KEY[token] ?? ENTITY_TYPE_TO_DOMAIN_KEY[token.toLowerCase()] ?? null;
+  return resolveDomainKeyFromEntityType(entityType);
 }
 
 export function useEntityEditorActions() {
   const projectDataStore = useProjectDataStore();
+  const projectStore = useProjectStore();
 
   function resolveDomainContext(entityType) {
     const domainKey = resolveEntityEditorDomainKey(entityType);
@@ -107,7 +105,7 @@ export function useEntityEditorActions() {
       domainMeta,
       storeRows,
       domainRows,
-      canonicalEntityType: getCanonicalEntityTypeForDomain(domainKey)
+      canonicalEntityType: resolveCanonicalEntityTypeForDomain(domainKey) ?? domainKey
     };
   }
 
@@ -206,9 +204,65 @@ export function useEntityEditorActions() {
     const context = resolveDomainContext(entityType);
     if (!context) return false;
 
-    const nextRows = context.domainRows.filter((row) => normalizeToken(row?.rowId) !== normalizeToken(rowId));
-    if (nextRows.length === context.domainRows.length) return false;
-    return commitDomainRows(context, nextRows);
+    const targetRowId = normalizeToken(rowId);
+    const deleteIndex = context.domainRows.findIndex((row) => normalizeToken(row?.rowId) === targetRowId);
+    if (deleteIndex < 0) return false;
+
+    const deletedRow = context.domainRows[deleteIndex];
+    const nextRows = context.domainRows.slice();
+    nextRows.splice(deleteIndex, 1);
+
+    const committed = commitDomainRows(context, nextRows);
+    if (!committed) return false;
+
+    pushDeleteUndoEntry({
+      wellId: normalizeToken(projectStore.activeWellId) || null,
+      entityType: context.canonicalEntityType,
+      domainIndex: deleteIndex,
+      row: cloneRowSnapshot(deletedRow)
+    });
+
+    return true;
+  }
+
+  function undoLastDelete() {
+    const lastEntry = deleteUndoStack.pop();
+    if (!lastEntry) return null;
+
+    const targetWellId = normalizeToken(lastEntry.wellId) || null;
+    if (targetWellId) {
+      projectStore.setActiveWell(targetWellId);
+    }
+
+    const context = resolveDomainContext(lastEntry.entityType);
+    if (!context) return null;
+
+    const restoredSourceRow = cloneRowSnapshot(lastEntry.row);
+    if (!restoredSourceRow || typeof restoredSourceRow !== 'object') return null;
+
+    const rows = context.domainRows.slice();
+    let restoredRow = { ...restoredSourceRow };
+    const existingRowId = normalizeToken(restoredRow.rowId);
+    const hasRowIdConflict = existingRowId && rows.some((row) => normalizeToken(row?.rowId) === existingRowId);
+    if (hasRowIdConflict) {
+      restoredRow.rowId = createRowId(getRowIdPrefixForKey(context.domainMeta.storeKey));
+    }
+
+    const insertIndex = clampIndex(lastEntry.domainIndex, rows.length);
+    rows.splice(insertIndex, 0, restoredRow);
+
+    const committed = commitDomainRows(context, rows);
+    if (!committed) {
+      pushDeleteUndoEntry(lastEntry);
+      return null;
+    }
+
+    const restoredRowId = normalizeToken(restoredRow.rowId);
+    return {
+      wellId: targetWellId || normalizeToken(projectStore.activeWellId) || null,
+      entityType: context.canonicalEntityType,
+      rowId: restoredRowId || null
+    };
   }
 
   function moveRow({ entityType, rowId, direction } = {}) {
@@ -250,6 +304,8 @@ export function useEntityEditorActions() {
     addRow,
     duplicateRow,
     deleteRow,
+    undoLastDelete,
+    clearDeleteUndoHistory,
     moveRow,
     moveRowToIndex,
     resolveEntityEditorDomainKey

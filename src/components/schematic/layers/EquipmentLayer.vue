@@ -2,6 +2,7 @@
 import { computed } from 'vue';
 import { LAYOUT_CONSTANTS } from '@/constants/index.js';
 import { clamp, parseOptionalNumber, resolveXPosition } from '@/utils/general.js';
+import { resolveEquipmentTypeSemantics } from './equipmentModelShared.js';
 
 const DEFAULT_PACKER_HEIGHT = 15;
 const ORPHAN_COLOR = 'red';
@@ -48,18 +49,6 @@ function handleHover(shape, event) {
 
 function handleLeave() {
   emit('leave-equipment');
-}
-
-function normalizeEquipmentType(type) {
-  const normalized = String(type ?? '').trim().toLowerCase();
-  if (normalized === 'packer') return 'packer';
-  if (normalized === 'bridge plug' || normalized === 'bridge_plug' || normalized === 'bridge-plug') {
-    return 'bridge-plug';
-  }
-  if (normalized === 'safety valve' || normalized === 'safety_valve' || normalized === 'safety-valve') {
-    return 'safety-valve';
-  }
-  return '';
 }
 
 function resolveSafetyValveHalfHeight(innerRadius, scale) {
@@ -116,8 +105,8 @@ const equipmentShapes = computed(() => {
     const equipmentIndex = Number.isInteger(Number(equip?.sourceIndex)) && Number(equip.sourceIndex) >= 0
       ? Number(equip.sourceIndex)
       : index;
-    const equipmentType = normalizeEquipmentType(equip?.type);
-    if (equipmentType === 'packer' || equipmentType === 'bridge-plug') {
+    const semantics = resolveEquipmentTypeSemantics(equip?.type);
+    if (semantics.isPackerLike) {
       const isOrphaned = equip.isOrphaned === true;
       const y = props.yScale(equip.depth);
       const height = DEFAULT_PACKER_HEIGHT * equip.scale;
@@ -234,7 +223,7 @@ const equipmentShapes = computed(() => {
           color: equip.color,
         });
       }
-    } else if (equipmentType === 'safety-valve') {
+    } else if (semantics.isSafetyValve) {
       const isOrphaned = equip.tubingParentIndex === null;
       const tubingID = Number(equip.tubingParentID);
       if (!Number.isFinite(tubingID)) return; // SSV must be in a tubing
@@ -375,6 +364,17 @@ const equipmentLabels = computed(() => {
     <template v-for="shape in equipmentShapes" :key="shape.id">
       <rect
         v-if="shape.type === 'rect'"
+        class="equipment-hit-target equipment-hit-target--rect"
+        :x="shape.x"
+        :y="shape.y"
+        :width="shape.width"
+        :height="shape.height"
+        @mousemove="handleHover(shape, $event)"
+        @mouseleave="handleLeave"
+        @click.stop="handleSelect(shape)"
+      />
+      <rect
+        v-if="shape.type === 'rect'"
         class="equipment-shape"
         :data-equipment-index="shape.equipmentIndex"
         :x="shape.x"
@@ -384,9 +384,18 @@ const equipmentLabels = computed(() => {
         :stroke="shape.color"
         :stroke-dasharray="shape.isOrphaned ? ORPHAN_DASH_STYLE : null"
         fill="none"
+        pointer-events="none"
+      />
+      <line
+        v-if="shape.type === 'line'"
+        class="equipment-hit-target equipment-hit-target--line"
+        :x1="shape.x1"
+        :y1="shape.y1"
+        :x2="shape.x2"
+        :y2="shape.y2"
         @mousemove="handleHover(shape, $event)"
         @mouseleave="handleLeave"
-        @click="handleSelect(shape)"
+        @click.stop="handleSelect(shape)"
       />
       <line
         v-if="shape.type === 'line'"
@@ -398,9 +407,15 @@ const equipmentLabels = computed(() => {
         :y2="shape.y2"
         :stroke="shape.color"
         :stroke-dasharray="shape.isOrphaned ? ORPHAN_DASH_STYLE : null"
+        pointer-events="none"
+      />
+      <polygon
+        v-if="shape.type === 'polygon'"
+        class="equipment-hit-target equipment-hit-target--polygon"
+        :points="shape.points"
         @mousemove="handleHover(shape, $event)"
         @mouseleave="handleLeave"
-        @click="handleSelect(shape)"
+        @click.stop="handleSelect(shape)"
       />
       <polygon
         v-if="shape.type === 'polygon'"
@@ -410,9 +425,18 @@ const equipmentLabels = computed(() => {
         :stroke="shape.color"
         :stroke-dasharray="shape.isOrphaned ? ORPHAN_DASH_STYLE : null"
         fill="none"
+        pointer-events="none"
+      />
+      <ellipse
+        v-if="shape.type === 'ellipse'"
+        class="equipment-hit-target equipment-hit-target--ellipse"
+        :cx="shape.cx"
+        :cy="shape.cy"
+        :rx="shape.rx"
+        :ry="shape.ry"
         @mousemove="handleHover(shape, $event)"
         @mouseleave="handleLeave"
-        @click="handleSelect(shape)"
+        @click.stop="handleSelect(shape)"
       />
       <ellipse
         v-if="shape.type === 'ellipse'"
@@ -425,9 +449,17 @@ const equipmentLabels = computed(() => {
         :stroke="shape.color"
         :stroke-dasharray="shape.isOrphaned ? ORPHAN_DASH_STYLE : null"
         fill="none"
+        pointer-events="none"
+      />
+      <circle
+        v-if="shape.type === 'circle'"
+        class="equipment-hit-target equipment-hit-target--circle"
+        :cx="shape.cx"
+        :cy="shape.cy"
+        :r="shape.r"
         @mousemove="handleHover(shape, $event)"
         @mouseleave="handleLeave"
-        @click="handleSelect(shape)"
+        @click.stop="handleSelect(shape)"
       />
       <circle
         v-if="shape.type === 'circle'"
@@ -439,9 +471,7 @@ const equipmentLabels = computed(() => {
         :stroke="shape.color"
         :stroke-dasharray="shape.isOrphaned ? ORPHAN_DASH_STYLE : null"
         fill="none"
-        @mousemove="handleHover(shape, $event)"
-        @mouseleave="handleLeave"
-        @click="handleSelect(shape)"
+        pointer-events="none"
       />
     </template>
 
@@ -490,7 +520,27 @@ const equipmentLabels = computed(() => {
 <style scoped>
 .equipment-shape {
   stroke-width: 1;
+  pointer-events: none;
+}
+
+.equipment-hit-target {
   cursor: pointer;
+}
+
+.equipment-hit-target--rect,
+.equipment-hit-target--polygon,
+.equipment-hit-target--ellipse,
+.equipment-hit-target--circle {
+  fill: rgba(0, 0, 0, 0);
+  stroke: transparent;
+  stroke-width: 12;
+}
+
+.equipment-hit-target--line {
+  stroke: transparent;
+  stroke-width: 16;
+  stroke-linecap: round;
+  pointer-events: stroke;
 }
 
 .equipment-layer__label-group {

@@ -5,7 +5,7 @@ import { t, translateEnum } from '@/app/i18n.js';
 
 let modulesRegistered = false;
 const HOT_VIEWPORT_HEIGHT = Object.freeze({
-    minVisibleRows: 8,
+    minVisibleRows: 5,
     maxVisibleRows: 10,
     rowHeight: 28,
     headerHeight: 34,

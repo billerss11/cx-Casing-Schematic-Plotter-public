@@ -186,35 +186,35 @@ const topologyGraphConfigs = defineConfigs({
     normal: {
       type: 'circle',
       radius: (node) => (node?.kind === 'SURFACE' ? 15 : 13),
-      color: (node) => String(node?.tone ?? '#1f2937'),
-      strokeColor: '#0f172a',
+      color: (node) => String(node?.tone ?? 'var(--color-analysis-graph-node-default)'),
+      strokeColor: 'var(--color-analysis-graph-node-stroke)',
       strokeWidth: 1
     },
     hover: {
       type: 'circle',
       radius: (node) => (node?.kind === 'SURFACE' ? 15 : 13),
-      color: '#3b82f6',
-      strokeColor: '#1d4ed8',
+      color: 'var(--color-analysis-graph-node-hover-fill)',
+      strokeColor: 'var(--color-analysis-graph-node-hover-stroke)',
       strokeWidth: 1.4
     },
     selected: {
       type: 'circle',
       radius: (node) => (node?.kind === 'SURFACE' ? 15 : 13),
-      color: '#2563eb',
-      strokeColor: '#1d4ed8',
+      color: 'var(--color-analysis-graph-node-selected-fill)',
+      strokeColor: 'var(--color-analysis-graph-node-selected-stroke)',
       strokeWidth: 2
     },
     label: {
       visible: true,
       text: (node) => String(node?.displayLabel ?? node?.name ?? ''),
-      color: '#0f172a',
+      color: 'var(--color-analysis-graph-node-label-text)',
       fontSize: 10,
       lineHeight: 1.05,
       direction: 'east',
       margin: 10,
       background: {
         visible: true,
-        color: 'rgba(255, 255, 255, 0.9)',
+        color: 'var(--color-analysis-graph-node-label-bg)',
         borderRadius: 3,
         padding: {
           vertical: 2,
@@ -228,14 +228,14 @@ const topologyGraphConfigs = defineConfigs({
     type: 'straight',
     normal: {
       width: 2.3,
-      color: (edge) => String(edge?.tone ?? '#475569'),
+      color: (edge) => String(edge?.tone ?? 'var(--color-analysis-graph-edge-default)'),
       dasharray: (edge) => edge?.dasharray ?? 0,
       animate: false,
       animationSpeed: 50
     },
     selected: {
       width: 3.2,
-      color: '#2563eb',
+      color: 'var(--color-analysis-graph-edge-selected)',
       dasharray: 0,
       animate: false,
       animationSpeed: 50
@@ -243,14 +243,14 @@ const topologyGraphConfigs = defineConfigs({
     label: {
       visible: false,
       text: (edge) => String(edge?.displayLabel ?? ''),
-      color: '#334155',
+      color: 'var(--color-analysis-graph-edge-label-text)',
       fontSize: 9,
       lineHeight: 1.02,
       margin: 4,
       padding: 3,
       background: {
         visible: true,
-        color: 'rgba(248, 250, 252, 0.86)',
+        color: 'var(--color-analysis-graph-edge-label-bg)',
         borderRadius: 3
       }
     }
@@ -347,7 +347,10 @@ watch(isAnalysisWorkspaceActive, (isActive) => {
   directionalGeometryReadyRequestId.value = null;
 });
 
-watch(activeWellId, (wellId) => {
+watch(activeWellId, (wellId, previousWellId) => {
+  if (wellId && previousWellId && wellId !== previousWellId) {
+    viewConfigStore.resetCameraViewsForWellSwitch();
+  }
   if (wellId) return;
   latestAnalysisGeometryRequestId.value = null;
   directionalGeometryReadyRequestId.value = null;
@@ -2381,9 +2384,9 @@ watch(filteredTopologyInspectorEdgeRows, (rows) => {
 .analysis-topology__sync-note {
   margin: 0;
   font-size: 0.76rem;
-  color: #8a5b00;
-  background: rgba(251, 191, 36, 0.15);
-  border: 1px solid rgba(217, 119, 6, 0.28);
+  color: var(--color-analysis-sync-note-text);
+  background: var(--color-analysis-sync-note-bg);
+  border: 1px solid var(--color-analysis-sync-note-border);
   border-radius: 6px;
   padding: 6px 8px;
 }
@@ -2393,7 +2396,7 @@ watch(filteredTopologyInspectorEdgeRows, (rows) => {
   margin-top: 4px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
   font-size: 0.7rem;
-  color: #7c4a03;
+  color: var(--color-analysis-sync-note-detail);
 }
 
 .analysis-topology__meta {
@@ -2492,7 +2495,7 @@ watch(filteredTopologyInspectorEdgeRows, (rows) => {
   width: 11px;
   height: 11px;
   border-radius: 2px;
-  border: 1px solid rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--color-analysis-legend-swatch-border);
   flex: 0 0 auto;
 }
 
@@ -2563,7 +2566,7 @@ watch(filteredTopologyInspectorEdgeRows, (rows) => {
 
 .analysis-topology__error {
   margin: 0;
-  color: var(--color-danger-600, #b42318);
+  color: var(--color-status-error-text);
   font-size: 0.82rem;
 }
 
@@ -2790,7 +2793,7 @@ watch(filteredTopologyInspectorEdgeRows, (rows) => {
 
 .analysis-topology__path-summary-button--active {
   border-color: color-mix(in srgb, var(--p-primary-color) 55%, var(--line));
-  background: rgba(37, 99, 235, 0.12);
+  background: var(--color-analysis-selection-bg);
 }
 
 .analysis-topology__path-summary-step {
@@ -2852,7 +2855,11 @@ watch(filteredTopologyInspectorEdgeRows, (rows) => {
   height: 340px;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(248, 250, 252, 0.95));
+  background: linear-gradient(
+    180deg,
+    var(--color-analysis-graph-canvas-start),
+    var(--color-analysis-graph-canvas-end)
+  );
 }
 
 .analysis-topology__graph-canvas--dialog {
@@ -2870,13 +2877,13 @@ watch(filteredTopologyInspectorEdgeRows, (rows) => {
 }
 
 .analysis-topology__graph-lane-header-bg {
-  fill: rgba(248, 250, 252, 0.92);
-  stroke: rgba(148, 163, 184, 0.75);
+  fill: var(--color-analysis-graph-lane-header-fill);
+  stroke: var(--color-analysis-graph-lane-header-stroke);
   stroke-width: 1;
 }
 
 .analysis-topology__graph-lane-header-text {
-  fill: #0f172a;
+  fill: var(--color-analysis-graph-lane-header-text);
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.01em;
@@ -2890,15 +2897,15 @@ watch(filteredTopologyInspectorEdgeRows, (rows) => {
   max-width: min(420px, 48%);
   margin: 0;
   padding: 8px 10px;
-  border: 1px solid rgba(148, 163, 184, 0.55);
+  border: 1px solid var(--color-analysis-graph-hover-border);
   border-radius: var(--radius-sm);
-  background: rgba(15, 23, 42, 0.92);
+  background: var(--color-analysis-graph-hover-bg);
   pointer-events: none;
 }
 
 .analysis-topology__graph-hover-detail-line {
   margin: 0;
-  color: #f8fafc;
+  color: var(--color-analysis-graph-hover-text);
   font-size: 0.73rem;
   line-height: 1.35;
 }
@@ -2952,20 +2959,20 @@ watch(filteredTopologyInspectorEdgeRows, (rows) => {
 }
 
 .analysis-topology__graph-line--open {
-  border-top-color: #475569;
+  border-top-color: var(--color-analysis-graph-line-open);
 }
 
 .analysis-topology__graph-line--barrier {
-  border-top-color: #be123c;
+  border-top-color: var(--color-analysis-graph-line-barrier);
   border-top-style: dashed;
 }
 
 .analysis-topology__graph-line--radial {
-  border-top-color: #c2410c;
+  border-top-color: var(--color-analysis-graph-line-radial);
 }
 
 .analysis-topology__graph-line--termination {
-  border-top-color: #0f766e;
+  border-top-color: var(--color-analysis-graph-line-termination);
 }
 
 :deep(.analysis-topology__envelope-table .p-datatable-table) {
@@ -2982,7 +2989,7 @@ watch(filteredTopologyInspectorEdgeRows, (rows) => {
 }
 
 :deep(.analysis-topology__envelope-table .analysis-topology__envelope-row--selected > td) {
-  background: rgba(37, 99, 235, 0.12);
+  background: var(--color-analysis-selection-bg);
 }
 
 :deep(.analysis-topology__inspector-table .p-datatable-table) {
@@ -2999,7 +3006,7 @@ watch(filteredTopologyInspectorEdgeRows, (rows) => {
 }
 
 :deep(.analysis-topology__inspector-table .analysis-topology__inspector-row--selected > td) {
-  background: rgba(37, 99, 235, 0.12);
+  background: var(--color-analysis-selection-bg);
 }
 
 .analysis-workspace__canvas {

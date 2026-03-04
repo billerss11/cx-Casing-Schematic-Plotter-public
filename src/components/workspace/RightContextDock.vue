@@ -26,17 +26,14 @@ const activePanelProps = computed(() => {
   if (activePanelKind.value === 'advanced') {
     return { mode: 'advanced' };
   }
-  if (activePanelKind.value === 'common-advanced') {
-    return { mode: 'common' };
-  }
   return {};
 });
 
 const titleText = computed(() => {
   if (activePanelKind.value === 'global') return 'Global Settings';
   if (activePanelKind.value === 'common-visual') return 'Visual Property Inspector';
-  if (isAdvancedMode.value) return 'Advanced Entity Editor';
-  return 'Entity Editor';
+  if (isAdvancedMode.value) return 'Data Editor';
+  return 'Visual Property Inspector';
 });
 
 function closeDock() {
@@ -64,7 +61,7 @@ function switchToAdvancedMode() {
           size="small"
           :severity="isCommonMode ? 'info' : 'secondary'"
           :outlined="!isCommonMode"
-          label="Common"
+          label="Visual"
           data-testid="right-dock-mode-common"
           @click="switchToCommonMode"
         />
@@ -73,7 +70,7 @@ function switchToAdvancedMode() {
           size="small"
           :severity="isAdvancedMode ? 'info' : 'secondary'"
           :outlined="!isAdvancedMode"
-          label="Advanced"
+          label="Data"
           data-testid="right-dock-mode-advanced"
           @click="switchToAdvancedMode"
         />

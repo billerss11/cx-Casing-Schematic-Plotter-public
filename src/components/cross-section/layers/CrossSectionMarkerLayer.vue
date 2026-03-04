@@ -74,9 +74,14 @@ const symbols = computed(() => {
     };
 
     const addLeak = (side) => {
+      const leakRadiusRaw = Number(marker?.wallCenterRadius);
+      const leakRadius = Number.isFinite(leakRadiusRaw) && leakRadiusRaw > EPSILON
+        ? leakRadiusRaw
+        : baseRadius;
+      const plottedLeakRadius = leakRadius * scale;
       const centerX = side === 'left'
-        ? -(plottedRadius + symbolSize * 0.5)
-        : (plottedRadius + symbolSize * 0.5);
+        ? -plottedLeakRadius
+        : plottedLeakRadius;
 
       rows.push({
         id: `marker-${markerIndex}-${side}-line-a`,

@@ -138,16 +138,20 @@ function resolveNodeY(nodeRow, depthToYScale = DEFAULT_DEPTH_TO_Y_SCALE) {
 }
 
 function resolveNodeTone(kind) {
-  if (kind === 'SURFACE') return '#0f766e';
-  if (kind === 'TUBING_INNER' || kind === 'BORE') return '#0f3f75';
-  if (kind === 'FORMATION_ANNULUS') return '#7c2d12';
-  return '#1f2937';
+  if (kind === 'SURFACE') return 'var(--color-analysis-graph-node-surface)';
+  if (kind === 'TUBING_INNER' || kind === 'BORE') return 'var(--color-analysis-graph-node-tubing)';
+  if (kind === 'FORMATION_ANNULUS') return 'var(--color-analysis-graph-node-formation)';
+  return 'var(--color-analysis-graph-node-default)';
 }
 
 function resolveEdgeTone(kind, cost) {
-  if (kind === 'termination') return '#0f766e';
-  if (kind === 'radial') return Number(cost) === 1 ? '#be123c' : '#c2410c';
-  return Number(cost) === 1 ? '#be123c' : '#475569';
+  if (kind === 'termination') return 'var(--color-analysis-graph-line-termination)';
+  if (kind === 'radial') return Number(cost) === 1
+    ? 'var(--color-analysis-graph-line-barrier)'
+    : 'var(--color-analysis-graph-line-radial)';
+  return Number(cost) === 1
+    ? 'var(--color-analysis-graph-line-barrier)'
+    : 'var(--color-analysis-graph-line-open)';
 }
 
 function applyMinimumLaneVerticalGap(

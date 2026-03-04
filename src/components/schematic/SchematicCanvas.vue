@@ -8,6 +8,10 @@ import { useDepthCursorOverlay } from '@/composables/useDepthCursorOverlay.js';
 import { useDepthCursorLayerDom } from '@/composables/useDepthCursorLayerDom.js';
 import { useCrossSectionDepthInteraction } from '@/composables/useCrossSectionDepthInteraction.js';
 import { useMagnifierOverlayDom } from '@/composables/useMagnifierOverlayDom.js';
+import { useCameraPanSession } from '@/composables/useCameraPanSession.js';
+import { createClientPointerResolver } from '@/composables/useClientPointerResolver.js';
+import { createSchematicPointerMapping } from '@/composables/useSchematicPointerMapping.js';
+import { buildCameraTransform, clampZoom, invertCameraPoint } from '@/utils/svgTransformMath.js';
 import {
   createContext as createPhysicsContext,
   getStackAtDepth as getPhysicsStackAtDepth
@@ -16,8 +20,7 @@ import {
   hasInteractiveSchematicTarget,
   isSameInteractionEntity,
   normalizeInteractionEntity,
-  resolveTopmostInteractionEntity,
-  resolveSvgPointerPosition
+  resolveTopmostInteractionEntity
 } from '@/composables/useSchematicInteraction.js';
 import { useProjectDataStore } from '@/stores/projectDataStore.js';
 import { useInteractionStore } from '@/stores/interactionStore.js';
@@ -107,10 +110,16 @@ const projectDataStore = useProjectDataStore();
 const interactionStore = useInteractionStore();
 const viewConfigStore = useViewConfigStore();
 
+const IDENTITY_CAMERA_STATE = Object.freeze({
+  scale: 1,
+  translateX: 0,
+  translateY: 0
+});
 const containerRef = ref(null);
+const containerClientWidth = ref(0);
+const containerClientHeight = ref(0);
 const svgRef = ref(null);
-const containerWidth = ref(900);
-const containerHeight = ref(720);
+const sceneRootRef = ref(null);
 const tooltipVisible = ref(false);
 const tooltipModel = ref(null);
 const tooltipX = ref(0);
@@ -129,8 +138,14 @@ const magnifierFrameRectRef = ref(null);
 const magnifierOverlayGroupRef = ref(null);
 const magnifierFrameGroupRef = ref(null);
 const magnifierTransformGroupRef = ref(null);
+const tooltipPointerResolver = createClientPointerResolver();
+const TOOLTIP_STALE_HIDE_MS = 48;
+const VERTICAL_WHEEL_ZOOM_SENSITIVITY = 0.0025;
+const VERTICAL_WHEEL_ZOOM_MIN = 0.25;
+const VERTICAL_WHEEL_ZOOM_MAX = 4;
 let resizeObserver = null;
 let hasGlobalInteractionListeners = false;
+let lastTooltipHoverAt = 0;
 
 const casingRows = computed(() => (
   Array.isArray(props.projectData?.casingData) ? props.projectData.casingData : []
@@ -365,6 +380,19 @@ const {
     left: 120
   }
 }, svgWidthValue, figHeightValue);
+const displayScaleValue = computed(() => {
+  const containerWidth = Number(containerClientWidth.value);
+  const containerHeight = Number(containerClientHeight.value);
+  if (!Number.isFinite(containerWidth) || containerWidth <= 0) return 1;
+  if (!Number.isFinite(containerHeight) || containerHeight <= 0) return 1;
+  if (!Number.isFinite(width.value) || width.value <= 0) return 1;
+  if (!Number.isFinite(height.value) || height.value <= 0) return 1;
+
+  const widthRatio = containerWidth / width.value;
+  return widthRatio > 1 ? widthRatio : 1;
+});
+const displayWidthValue = computed(() => Math.round(width.value * displayScaleValue.value));
+const displayHeightValue = computed(() => Math.round(height.value * displayScaleValue.value));
 
 const isDepthCursorEnabled = computed(() => props.config?.showDepthCursor === true);
 const plotLeftX = computed(() => xScale.value(-xHalf.value));
@@ -382,6 +410,11 @@ const depthCursor = useDepthCursorOverlay({
   plotTopY,
   plotBottomY,
   restrictXToPlot: false,
+  resolvePointerFromClient: ({ clientX, clientY, localPointer }) => (
+    pointerMapping.resolvePointer({ clientX, clientY })?.canonicalPoint ??
+    invertCameraPoint(localPointer, verticalCameraState.value) ??
+    localPointer
+  ),
   resolveDepthAtY: (cursorY) => yScale.value.invert(cursorY)
 });
 const depthCursorVisible = depthCursor.visible;
@@ -444,7 +477,8 @@ useDepthCursorLayerDom({
 });
 
 function resolveCrossSectionDepthFromClient(clientX, clientY) {
-  const pointer = resolveSvgPointerPosition(svgRef.value, { clientX, clientY });
+  const pointerResult = pointerMapping.resolvePointer({ clientX, clientY });
+  const pointer = pointerResult?.canonicalPoint;
   if (!pointer) return null;
   const nextDepth = Number(yScale.value.invert(pointer.y));
   if (!Number.isFinite(nextDepth)) return null;
@@ -458,7 +492,7 @@ const crossSectionDepthInteraction = useCrossSectionDepthInteraction({
   setDepth: (depth) => viewConfigStore.setCursorDepth(depth),
   hoverIntervalMs: 33,
   depthEpsilon: 0.01,
-  unlockOnMouseLeave: true
+  unlockOnMouseLeave: false
 });
 
 const magnifierWindowWidth = MAGNIFIER_WINDOW_DEFAULTS.width;
@@ -489,19 +523,41 @@ const magnifierOverlay = useMagnifierOverlayDom({
   transformGroupRef: magnifierTransformGroupRef,
   clipRectRef: magnifierClipRectRef,
   glassRectRef: magnifierGlassRectRef,
-  frameRectRef: magnifierFrameRectRef
+  frameRectRef: magnifierFrameRectRef,
+  resolvePointerFromClient: ({ clientX, clientY, localPointer }) => (
+    pointerMapping.resolvePointer({ clientX, clientY })?.canonicalPoint ?? localPointer
+  )
 });
 const magnifierSceneId = `schematic-scene-${magnifierIdToken}`;
 const magnifierClipPathId = `schematic-magnifier-clip-${magnifierIdToken}`;
+const isCameraTransformEnabled = computed(() => (
+  viewConfigStore.uiState?.useCameraTransform === true &&
+  viewConfigStore.uiState?.cameraTransformVertical === true
+));
+const verticalCameraState = computed(() => (
+  isCameraTransformEnabled.value
+    ? (viewConfigStore.uiState?.verticalCamera ?? IDENTITY_CAMERA_STATE)
+    : IDENTITY_CAMERA_STATE
+));
+const sceneRootTransform = computed(() => buildCameraTransform(verticalCameraState.value));
+const pointerMapping = createSchematicPointerMapping({
+  svgElement: svgRef,
+  resolveCamera: () => verticalCameraState.value
+});
+const cameraPanSession = useCameraPanSession({
+  enabled: isCameraTransformEnabled,
+  panBy: (deltaX, deltaY) => {
+    viewConfigStore.panVerticalCameraBy(deltaX, deltaY);
+  }
+});
+const isCameraPanActive = cameraPanSession.isPanActive;
 
 function updateContainerSize() {
   const container = containerRef.value;
   if (!container) return;
-  const rect = container.getBoundingClientRect();
-  const widthNext = Math.max(420, Math.round(rect.width));
-  const heightNext = Math.max(520, Math.round(rect.height));
-  containerWidth.value = widthNext;
-  containerHeight.value = heightNext;
+  containerClientWidth.value = Math.max(0, Number(container.clientWidth) || 0);
+  containerClientHeight.value = Math.max(0, Number(container.clientHeight) || 0);
+  tooltipPointerResolver.syncFromContainer(container, { forceRect: true });
   magnifierOverlay.refresh();
 }
 
@@ -514,21 +570,39 @@ function showTooltipIfEnabled(model, event) {
 }
 
 function resolvePointerPosition(event) {
-  const container = containerRef.value;
   const clientX = Number(event?.clientX);
   const clientY = Number(event?.clientY);
-
-  if (!container || !Number.isFinite(clientX) || !Number.isFinite(clientY)) {
+  if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) {
     return {
       x: 8,
       y: 8
     };
   }
 
-  const rect = container.getBoundingClientRect();
+  const container = containerRef.value;
+  if (!tooltipPointerResolver.syncFromContainer(container)) {
+    return {
+      x: 8,
+      y: 8
+    };
+  }
+
+  const pointer = tooltipPointerResolver.resolveFromClient(
+    clientX,
+    clientY,
+    displayWidthValue.value,
+    displayHeightValue.value
+  );
+  if (!pointer) {
+    return {
+      x: 8,
+      y: 8
+    };
+  }
+
   return {
-    x: clamp(clientX - rect.left, 0, containerWidth.value),
-    y: clamp(clientY - rect.top, 0, containerHeight.value)
+    x: clamp(pointer.x, 0, displayWidthValue.value),
+    y: clamp(pointer.y, 0, displayHeightValue.value)
   };
 }
 
@@ -543,11 +617,13 @@ function showTooltip(model, event) {
   tooltipX.value = next.x;
   tooltipY.value = next.y;
   tooltipVisible.value = true;
+  lastTooltipHoverAt = Date.now();
 }
 
 function hideTooltip() {
   tooltipVisible.value = false;
   tooltipModel.value = null;
+  lastTooltipHoverAt = 0;
 }
 
 const interactionGuard = () => isSelectionEnabled.value;
@@ -609,9 +685,8 @@ function handleHoverPipe(entity, event) {
 function handleLeavePipe() {
   if (isSelectionEnabled.value) {
     dispatchSchematicInteraction('leave', { type: 'pipe' });
-  } else {
-    hideTooltip();
   }
+  hideTooltip();
 }
 
 function resolveFluidLayerAtDepth(depth, fluidIndex) {
@@ -630,7 +705,8 @@ function resolveFluidLayerAtDepth(depth, fluidIndex) {
 
 function resolveFluidTooltipMeta({ index, event }) {
   if (!Number.isInteger(index)) return null;
-  const pointer = resolveSvgPointerPosition(svgRef.value, event);
+  const pointerResult = pointerMapping.resolvePointer(event);
+  const pointer = pointerResult?.canonicalPoint;
   if (!pointer) return null;
 
   const depth = clamp(Number(yScale.value.invert(pointer.y)), minDepth.value, maxDepth.value);
@@ -800,11 +876,32 @@ function handleDeleteUserAnnotation(payload = {}) {
   deleteUserAnnotationById(payload?.id);
 }
 
+function resetCameraPanState() {
+  cameraPanSession.resetPan();
+}
+
+function startCameraPan(event) {
+  return cameraPanSession.startPan(event);
+}
+
+function updateCameraPanFromPointer(event) {
+  cameraPanSession.updatePan(event);
+}
+
+function handleCanvasPointerUp(event) {
+  const finishResult = cameraPanSession.finishPan(event);
+  if (finishResult?.shouldProcessClick) {
+    handleCanvasBackgroundClick(event);
+  }
+}
+
 function handleCanvasPointerDown(event) {
   const target = event?.target;
   if (isTextInputLikeElement(target)) return;
   if (target instanceof Element && target.closest('.user-annotation-layer__editor')) return;
   focusCanvasContainer();
+  if (hasInteractiveSchematicTarget(target)) return;
+  startCameraPan(event);
 }
 
 function handleGlobalKeyDown(event) {
@@ -834,6 +931,7 @@ function disconnectGlobalInteractionListeners() {
 }
 
 function handleCanvasMouseLeave() {
+  resetCameraPanState();
   handleLeavePipe();
   handleLeaveLine();
   handleLeaveBox();
@@ -844,9 +942,18 @@ function handleCanvasMouseLeave() {
   crossSectionDepthInteraction.handleMouseLeave();
   depthCursor.hide();
   magnifierOverlay.handleMouseLeave();
+  hideTooltip();
+}
+
+function hideStaleTooltipOnMouseMove() {
+  if (!tooltipVisible.value || lastTooltipHoverAt <= 0) return;
+  if ((Date.now() - lastTooltipHoverAt) <= TOOLTIP_STALE_HIDE_MS) return;
+  hideTooltip();
 }
 
 function handleCanvasMouseMove(event) {
+  if (isCameraPanActive.value) return;
+  hideStaleTooltipOnMouseMove();
   if (crossSectionVisible.value) {
     crossSectionDepthInteraction.handleHover(event);
   }
@@ -861,6 +968,43 @@ function handleCanvasScroll() {
     depthCursor.handleScroll();
   }
   magnifierOverlay.handleScroll();
+}
+
+function handleCanvasWheel(event) {
+  if (!isCameraTransformEnabled.value) return;
+  if (isCameraPanActive.value) return;
+
+  const pointerResult = pointerMapping.resolvePointer(event);
+  const pointer = pointerResult?.svgPoint;
+  const canonicalPoint = pointerResult?.canonicalPoint;
+  if (!pointer || !canonicalPoint) return;
+
+  const currentScale = Number(verticalCameraState.value?.scale);
+  const deltaY = Number(event?.deltaY);
+  const zoomDelta = Number.isFinite(deltaY)
+    ? (-deltaY * VERTICAL_WHEEL_ZOOM_SENSITIVITY)
+    : 0;
+  if (!Number.isFinite(currentScale) || zoomDelta === 0) return;
+
+  const nextScale = clampZoom(currentScale + zoomDelta, {
+    min: VERTICAL_WHEEL_ZOOM_MIN,
+    max: VERTICAL_WHEEL_ZOOM_MAX,
+    fallback: currentScale
+  });
+  if (Object.is(nextScale, currentScale)) return;
+
+  const nextTranslateX = pointer.x - (canonicalPoint.x * nextScale);
+  const nextTranslateY = pointer.y - (canonicalPoint.y * nextScale);
+  viewConfigStore.setVerticalCameraZoom(nextScale);
+  viewConfigStore.setVerticalCameraPan({
+    translateX: nextTranslateX,
+    translateY: nextTranslateY
+  });
+
+  if (typeof event?.preventDefault === 'function') {
+    event.preventDefault();
+  }
+  handleCanvasScroll();
 }
 
 function clearAllSelections() {
@@ -933,15 +1077,21 @@ onBeforeUnmount(() => {
     tabindex="0"
     @mousemove="handleCanvasMouseMove"
     @scroll.passive="handleCanvasScroll"
+    @wheel="handleCanvasWheel"
     @pointerdown="handleCanvasPointerDown"
+    @pointermove="updateCameraPanFromPointer"
+    @pointerup="handleCanvasPointerUp"
+    @pointercancel="handleCanvasPointerUp"
     @mouseleave="handleCanvasMouseLeave"
   >
     <svg
       ref="svgRef"
       class="schematic-canvas__svg"
-      :width="width"
-      :height="height"
+      :width="displayWidthValue"
+      :height="displayHeightValue"
       :viewBox="`0 0 ${width} ${height}`"
+      :data-export-width="width"
+      :data-export-height="height"
       preserveAspectRatio="xMidYMid meet"
       @click="handleCanvasBackgroundClick"
     >
@@ -960,7 +1110,7 @@ onBeforeUnmount(() => {
         </clipPath>
       </defs>
 
-      <g :id="magnifierSceneId">
+      <g ref="sceneRootRef" :id="magnifierSceneId" :transform="sceneRootTransform">
         <AxisLayer
         :x-scale="xScale"
         :y-scale="yScale"
@@ -1253,8 +1403,8 @@ onBeforeUnmount(() => {
       :model="tooltipModel"
       :x="tooltipX"
       :y="tooltipY"
-      :container-width="width"
-      :container-height="height"
+      :container-width="displayWidthValue"
+      :container-height="displayHeightValue"
     />
   </div>
 </template>

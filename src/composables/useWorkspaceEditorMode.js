@@ -39,8 +39,7 @@ export function useWorkspaceEditorMode() {
   const activePanelKind = computed(() => {
     if (!hasAnySelection.value) return 'global';
     if (editorMode.value === RIGHT_DOCK_EDITOR_MODES.advanced) return 'advanced';
-    if (hasSelectedVisualContext.value) return 'common-visual';
-    return 'common-advanced';
+    return 'common-visual';
   });
 
   const isAdvancedMode = computed(() => editorMode.value === RIGHT_DOCK_EDITOR_MODES.advanced);

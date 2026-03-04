@@ -3,14 +3,6 @@ import { isOpenHoleRow } from '@/app/domain.js';
 import { NAMED_COLORS } from '@/constants/index.js';
 import { OPEN_HOLE_WAVE_DEFAULTS, OPEN_HOLE_WAVE_LIMITS } from '@/utils/openHoleWave.js';
 import { parseOptionalNumber } from '@/utils/general.js';
-import { buildEquipmentAttachOptions } from '@/utils/equipmentAttachReference.js';
-import {
-    EQUIPMENT_ACTUATION_STATE_OPTIONS,
-    EQUIPMENT_INTEGRITY_STATUS_OPTIONS,
-    EQUIPMENT_SEAL_OVERRIDE_OPTIONS
-} from '@/topology/equipmentMetadata.js';
-import { resolveEquipmentInspectorFields } from '@/topology/equipmentDefinitions/index.js';
-import { NODE_KIND_BORE, TOPOLOGY_VOLUME_KINDS } from '@/topology/topologyTypes.js';
 
 export const VISUAL_INSPECTOR_CONTROL_TYPES = Object.freeze({
     toggle: 'toggle',
@@ -19,8 +11,7 @@ export const VISUAL_INSPECTOR_CONTROL_TYPES = Object.freeze({
     select: 'select'
 });
 export const VISUAL_INSPECTOR_FIELD_GROUP_KEYS = Object.freeze({
-    VISUAL: 'visual',
-    ADVANCED_ENGINEERING: 'advanced_engineering'
+    VISUAL: 'visual'
 });
 
 function buildEnumOptions(enumType) {
@@ -84,36 +75,6 @@ function resolveGlobalDepthSliderRange(context, fallbackStep = 0.1) {
         step: fallbackStep
     };
 }
-
-function buildEquipmentOverrideOptions(optionValues = [], inheritLabel = 'Inherit') {
-    const values = Array.isArray(optionValues) ? optionValues : [];
-    return Object.freeze([
-        Object.freeze({ label: inheritLabel, value: null }),
-        ...values
-            .filter((value) => String(value ?? '').trim().length > 0)
-            .map((value) => Object.freeze({ label: String(value), value: String(value) }))
-    ]);
-}
-
-const EQUIPMENT_ACTUATION_OPTIONS = buildEquipmentOverrideOptions(EQUIPMENT_ACTUATION_STATE_OPTIONS);
-const EQUIPMENT_INTEGRITY_OPTIONS = buildEquipmentOverrideOptions(EQUIPMENT_INTEGRITY_STATUS_OPTIONS);
-const EQUIPMENT_SEAL_OPTIONS = buildEquipmentOverrideOptions(EQUIPMENT_SEAL_OVERRIDE_OPTIONS);
-const EQUIPMENT_VOLUME_OVERRIDE_KEYS = Object.freeze(
-    TOPOLOGY_VOLUME_KINDS.filter((volumeKey) => volumeKey !== NODE_KIND_BORE)
-);
-const EQUIPMENT_SEAL_BY_VOLUME_FIELDS = Object.freeze(
-    EQUIPMENT_VOLUME_OVERRIDE_KEYS.map((volumeKey) => (
-        createField(
-            `sealByVolume.${volumeKey}`,
-            VISUAL_INSPECTOR_CONTROL_TYPES.select,
-            `table.equipment.seal_by_volume_${String(volumeKey).trim().toLowerCase()}`,
-            {
-                options: () => EQUIPMENT_SEAL_OPTIONS,
-                groupKey: VISUAL_INSPECTOR_FIELD_GROUP_KEYS.ADVANCED_ENGINEERING
-            }
-        )
-    ))
-);
 
 const CASING_BASE_FIELDS = Object.freeze([
     createField('showTop', VISUAL_INSPECTOR_CONTROL_TYPES.toggle, 'table.casing.show_top', { defaultValue: true }),
@@ -189,30 +150,6 @@ const VISUAL_INSPECTOR_SCHEMA = Object.freeze({
                 groupKey: VISUAL_INSPECTOR_FIELD_GROUP_KEYS.VISUAL
             })
         )),
-        createField('attachToDisplay', VISUAL_INSPECTOR_CONTROL_TYPES.select, 'table.equipment.attach_to', {
-            options: ({ context }) => buildEquipmentAttachOptions(
-                context?.casingRows,
-                context?.tubingRows
-            ),
-            groupKey: VISUAL_INSPECTOR_FIELD_GROUP_KEYS.ADVANCED_ENGINEERING
-        }),
-        createField('actuationState', VISUAL_INSPECTOR_CONTROL_TYPES.select, 'table.equipment.actuation_state', {
-            options: () => EQUIPMENT_ACTUATION_OPTIONS,
-            groupKey: VISUAL_INSPECTOR_FIELD_GROUP_KEYS.ADVANCED_ENGINEERING
-        }),
-        createField('integrityStatus', VISUAL_INSPECTOR_CONTROL_TYPES.select, 'table.equipment.integrity_status', {
-            options: () => EQUIPMENT_INTEGRITY_OPTIONS,
-            groupKey: VISUAL_INSPECTOR_FIELD_GROUP_KEYS.ADVANCED_ENGINEERING
-        }),
-        createField('boreSeal', VISUAL_INSPECTOR_CONTROL_TYPES.select, 'table.equipment.bore_seal', {
-            options: () => EQUIPMENT_SEAL_OPTIONS,
-            groupKey: VISUAL_INSPECTOR_FIELD_GROUP_KEYS.ADVANCED_ENGINEERING
-        }),
-        createField('annularSeal', VISUAL_INSPECTOR_CONTROL_TYPES.select, 'table.equipment.annular_seal', {
-            options: () => EQUIPMENT_SEAL_OPTIONS,
-            groupKey: VISUAL_INSPECTOR_FIELD_GROUP_KEYS.ADVANCED_ENGINEERING
-        }),
-        ...EQUIPMENT_SEAL_BY_VOLUME_FIELDS,
         createField('color', VISUAL_INSPECTOR_CONTROL_TYPES.color, 'table.markers.color', {
             options: ({ currentValue }) => buildColorOptions(currentValue),
             groupKey: VISUAL_INSPECTOR_FIELD_GROUP_KEYS.VISUAL
@@ -329,10 +266,5 @@ function shouldShowField(fieldDefinition, context) {
 
 export function getVisualInspectorFields(elementType, context = null) {
     const baseFields = VISUAL_INSPECTOR_SCHEMA[elementType] ?? [];
-    const extensionFields = elementType === 'equipment'
-        ? resolveEquipmentInspectorFields(context?.rowData?.type, context)
-        : [];
-
-    return [...baseFields, ...extensionFields]
-        .filter((fieldDefinition) => shouldShowField(fieldDefinition, context));
+    return [...baseFields].filter((fieldDefinition) => shouldShowField(fieldDefinition, context));
 }

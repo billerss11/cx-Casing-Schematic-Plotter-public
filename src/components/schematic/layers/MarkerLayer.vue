@@ -9,6 +9,7 @@ import {
   PIPE_HOST_TYPE_TUBING,
   resolvePipeHostReference
 } from '@/utils/pipeReference.js';
+import { resolvePipeWallGeometry } from '@/utils/pipeWallGeometry.js';
 
 const props = defineProps({
   markers: {
@@ -44,15 +45,14 @@ const props = defineProps({
 const emit = defineEmits(['select-marker', 'hover-marker', 'leave-marker']);
 const MARKER_HITBOX_PADDING = 6;
 
-function getMarkerBaseRadiusAtDepth(depth, hostRows = [], diameterScale = 1) {
+function getMarkerHostRowAtDepth(depth, hostRows = []) {
   if (!Number.isFinite(depth)) return null;
   const candidates = hostRows
     .filter((row) => Number.isFinite(row?.top) && Number.isFinite(row?.bottom) && row.top < depth && depth < row.bottom)
     .filter((row) => Number.isFinite(row?.od) && row.od > 0);
   if (candidates.length === 0) return null;
   candidates.sort((a, b) => Number(a.od) - Number(b.od));
-  const selected = candidates[0];
-  return selected ? (Number(selected.od) / 2) * diameterScale : null;
+  return candidates[0] ?? null;
 }
 
 function resolveHostRows(hostType, casingRows, tubingRows) {
@@ -62,7 +62,7 @@ function resolveHostRows(hostType, casingRows, tubingRows) {
   return casingRows;
 }
 
-function getMarkerBaseRadius(marker, depth, pipeReferenceMap, casingRows, tubingRows, diameterScale = 1) {
+function resolveMarkerWallRadii(marker, depth, pipeReferenceMap, casingRows, tubingRows, diameterScale = 1) {
   const hostType = normalizePipeHostType(marker?.attachToHostType, PIPE_HOST_TYPE_CASING);
   const attachToId = String(marker?.attachToId ?? '').trim();
   const attachToRow = String(marker?.attachToRow ?? '').trim();
@@ -70,13 +70,21 @@ function getMarkerBaseRadius(marker, depth, pipeReferenceMap, casingRows, tubing
     preferredId: attachToId,
     hostType
   });
+  const hostRows = resolveHostRows(hostType, casingRows, tubingRows);
+  const candidateRow = resolvedHost?.row ?? getMarkerHostRowAtDepth(depth, hostRows);
+  if (!candidateRow) return null;
 
-  if (resolvedHost?.row && Number.isFinite(resolvedHost.row.od) && Number(resolvedHost.row.od) > 0) {
-    return (Number(resolvedHost.row.od) / 2) * diameterScale;
+  const wallGeometry = resolvePipeWallGeometry(candidateRow, diameterScale);
+  if (!wallGeometry || !Number.isFinite(wallGeometry.outerRadius) || wallGeometry.outerRadius <= 0) {
+    return null;
   }
 
-  const hostRows = resolveHostRows(hostType, casingRows, tubingRows);
-  return getMarkerBaseRadiusAtDepth(depth, hostRows, diameterScale);
+  return {
+    outerRadius: wallGeometry.outerRadius,
+    wallCenterRadius: Number.isFinite(wallGeometry.wallCenterRadius)
+      ? wallGeometry.wallCenterRadius
+      : wallGeometry.outerRadius
+  };
 }
 
 function splitMarkerInterval(top, bottom, hostRows = []) {
@@ -154,7 +162,7 @@ function createPerforationShapes(segment, baseRadius, marker, xScale, yScale, ma
   return shapes;
 }
 
-function createLeakShapes(segment, baseRadius, marker, xScale, yScale) {
+function createLeakShapes(segment, wallCenterRadius, marker, xScale, yScale) {
   const scaleRaw = Number(marker?.scale);
   const scale = Number.isFinite(scaleRaw) && scaleRaw > 0 ? scaleRaw : 1.0;
   const size = 8 * scale;
@@ -188,10 +196,10 @@ function createLeakShapes(segment, baseRadius, marker, xScale, yScale) {
   };
 
   if (side === bothSideToken || side === leftSideToken) {
-    drawX(-baseRadius - size / 2);
+    drawX(-wallCenterRadius);
   }
   if (side === bothSideToken || side === rightSideToken) {
-    drawX(baseRadius + size / 2);
+    drawX(wallCenterRadius);
   }
 
   return shapes;
@@ -273,7 +281,7 @@ const markerGroups = computed(() => {
 
       segments.forEach((segment) => {
         const centerDepth = (segment.top + segment.bottom) / 2;
-        const baseRadius = getMarkerBaseRadius(
+        const wallRadii = resolveMarkerWallRadii(
           marker,
           centerDepth,
           pipeReferenceMap,
@@ -281,14 +289,20 @@ const markerGroups = computed(() => {
           tubingRows,
           diameterScale
         );
-        if (!Number.isFinite(baseRadius)) return;
+        if (!wallRadii) return;
 
         if (isLeak) {
-          shapes.push(...createLeakShapes(segment, baseRadius, marker, props.xScale, props.yScale));
+          shapes.push(...createLeakShapes(
+            segment,
+            wallRadii.wallCenterRadius,
+            marker,
+            props.xScale,
+            props.yScale
+          ));
         } else {
           shapes.push(...createPerforationShapes(
             segment,
-            baseRadius,
+            wallRadii.outerRadius,
             marker,
             props.xScale,
             props.yScale,

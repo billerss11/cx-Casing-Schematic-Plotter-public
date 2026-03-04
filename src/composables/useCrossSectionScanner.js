@@ -2,22 +2,21 @@ import { computed, unref } from 'vue';
 import { MARKER_DEFAULT_COLORS } from '@/constants/index.js';
 import { normalizeMarkerType, normalizeMarkerSide } from '@/app/domain.js';
 import * as Physics from '@/composables/usePhysics.js';
+import {
+    buildPipeReferenceMap,
+    normalizePipeHostType,
+    PIPE_HOST_TYPE_CASING,
+    PIPE_HOST_TYPE_TUBING,
+    resolvePipeHostReference
+} from '@/utils/pipeReference.js';
+import { resolvePipeWallGeometry } from '@/utils/pipeWallGeometry.js';
+import {
+    normalizeEquipmentTypeKey,
+    resolveEquipmentTypeLabel
+} from '@/topology/equipmentDefinitions/index.js';
 
 const EPSILON = 1e-6;
 const EQUIPMENT_DEPTH_TOLERANCE = 0.5;
-
-function normalizeEquipmentType(type) {
-    const normalized = String(type ?? '').trim().toLowerCase();
-    if (!normalized) return '';
-    if (normalized === 'packer') return 'Packer';
-    if (normalized === 'bridge plug' || normalized === 'bridge_plug' || normalized === 'bridge-plug') {
-        return 'Bridge Plug';
-    }
-    if (normalized === 'safety valve' || normalized === 'safety_valve' || normalized === 'safety-valve') {
-        return 'Safety Valve';
-    }
-    return String(type ?? '').trim();
-}
 
 function resolveEquipmentSourceIndex(row) {
     const sourceIndex = Number(row?.sourceIndex ?? row?.__index);
@@ -39,34 +38,52 @@ function resolveScannerInput(projectData) {
     return { context, markerRows };
 }
 
-function resolveMarkerBaseRadius(marker, depth, context) {
-    const attachToId = String(marker?.attachToId ?? '').trim();
-    const attachToRow = String(marker?.attachToRow ?? '').trim();
-    if (attachToId || attachToRow) {
-        const target = Physics.resolveCasingReference(
-            attachToRow,
-            context.casingRefMap,
-            context.casingRows,
-            attachToId
-        );
-        if (
-            target &&
-            Number.isFinite(target.outerRadius) &&
-            Physics.isDepthWithinInclusive(depth, Number(target.top), Number(target.bottom))
-        ) {
-            return target.outerRadius;
+function resolveMarkerHostRows(hostType, context) {
+    if (hostType === PIPE_HOST_TYPE_TUBING) {
+        return Array.isArray(context?.tubingRows) ? context.tubingRows : [];
+    }
+    return Array.isArray(context?.casingRows) ? context.casingRows : [];
+}
+
+function resolveMarkerHostGeometry(marker, depth, context, pipeReferenceMap) {
+    const hostType = normalizePipeHostType(marker?.attachToHostType, PIPE_HOST_TYPE_CASING);
+    const hostRows = resolveMarkerHostRows(hostType, context);
+    const resolvedHost = resolvePipeHostReference(marker?.attachToRow, pipeReferenceMap, {
+        preferredId: marker?.attachToId,
+        hostType
+    });
+
+    const attachedRow = resolvedHost?.row ?? null;
+    if (
+        attachedRow &&
+        Physics.isDepthWithinInclusive(depth, Number(attachedRow?.top), Number(attachedRow?.bottom))
+    ) {
+        const attachedWall = resolvePipeWallGeometry(attachedRow, 1);
+        if (attachedWall && attachedWall.outerRadius > EPSILON) {
+            return attachedWall;
         }
     }
 
-    const activeSteel = context.casingRows
-        .filter((row) => !row.isOpenHole && Physics.isDepthWithinInclusive(depth, Number(row.top), Number(row.bottom)))
-        .sort((a, b) => a.od - b.od);
+    const activeSteel = hostRows
+        .filter((row) => {
+            if (hostType === PIPE_HOST_TYPE_CASING && row?.isOpenHole) return false;
+            return Physics.isDepthWithinInclusive(depth, Number(row?.top), Number(row?.bottom));
+        })
+        .sort((a, b) => Number(a?.od) - Number(b?.od));
 
-    return activeSteel.length > 0 ? activeSteel[0].outerRadius : null;
+    if (activeSteel.length > 0) {
+        const activeWall = resolvePipeWallGeometry(activeSteel[0], 1);
+        if (activeWall && activeWall.outerRadius > EPSILON) {
+            return activeWall;
+        }
+    }
+
+    return null;
 }
 
 function collectActiveMarkers(depth, context, markerRows = []) {
     if (!Array.isArray(markerRows) || markerRows.length === 0) return [];
+    const pipeReferenceMap = buildPipeReferenceMap(context?.casingRows, context?.tubingRows);
 
     const active = [];
     markerRows.forEach((marker, markerIndex) => {
@@ -81,8 +98,8 @@ function collectActiveMarkers(depth, context, markerRows = []) {
         const type = normalizedType.includes('leak') ? 'leak' : (normalizedType.includes('perf') ? 'perforation' : null);
         if (!type) return;
 
-        const baseRadius = resolveMarkerBaseRadius(marker, depth, context);
-        if (!Number.isFinite(baseRadius) || baseRadius <= 0) return;
+        const hostGeometry = resolveMarkerHostGeometry(marker, depth, context, pipeReferenceMap);
+        if (!hostGeometry) return;
 
         const normalizedSide = String(normalizeMarkerSide(marker?.side)).toLowerCase();
         const left = normalizedSide.includes('left') || normalizedSide.includes('both');
@@ -102,7 +119,10 @@ function collectActiveMarkers(depth, context, markerRows = []) {
             type,
             color,
             scale: Number.isFinite(scale) && scale > 0 ? scale : 1,
-            baseRadius,
+            baseRadius: hostGeometry.outerRadius,
+            wallCenterRadius: Number.isFinite(hostGeometry.wallCenterRadius)
+                ? hostGeometry.wallCenterRadius
+                : hostGeometry.outerRadius,
             showLeft,
             showRight
         });
@@ -214,8 +234,9 @@ function collectActiveEquipment(depth, context) {
             const sourceIndex = resolveEquipmentSourceIndex(row);
             if (sourceIndex === null) return null;
 
-            const type = normalizeEquipmentType(row?.type);
+            const type = resolveEquipmentTypeLabel(row?.type);
             if (!type) return null;
+            const typeKey = normalizeEquipmentTypeKey(row?.type);
 
             const tubingParentIndex = Number(row?.tubingParentIndex);
             const tubingParentRow = Number.isInteger(tubingParentIndex) && tubingParentIndex >= 0
@@ -234,7 +255,7 @@ function collectActiveEquipment(depth, context) {
             const resolvedSealOuterDiameter = Number(row?.sealOuterDiameter);
             const hasResolvedSealInnerDiameter = Number.isFinite(resolvedSealInnerDiameter) && resolvedSealInnerDiameter > 0;
             const hasResolvedSealOuterDiameter = Number.isFinite(resolvedSealOuterDiameter) && resolvedSealOuterDiameter > 0;
-            const isPackerLike = type === 'Packer' || type === 'Bridge Plug';
+            const isPackerLike = typeKey === 'packer' || typeKey === 'bridge-plug';
             const isExplicitOrphan = Boolean(row?.isOrphaned);
             const packerSealInnerDiameter = hasResolvedSealInnerDiameter
                 ? resolvedSealInnerDiameter

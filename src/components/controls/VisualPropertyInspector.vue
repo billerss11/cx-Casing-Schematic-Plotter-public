@@ -6,16 +6,9 @@ import { onLanguageChange, t } from '@/app/i18n.js';
 import { useProjectDataStore } from '@/stores/projectDataStore.js';
 import { useSelectedVisualContext } from '@/composables/useSelectedVisualContext.js';
 import {
-  buildEquipmentAttachOptions,
-  isPackerEquipmentType,
-  resolveEquipmentAttachOption
-} from '@/utils/equipmentAttachReference.js';
-import {
   getVisualInspectorFields,
-  VISUAL_INSPECTOR_CONTROL_TYPES,
-  VISUAL_INSPECTOR_FIELD_GROUP_KEYS
+  VISUAL_INSPECTOR_CONTROL_TYPES
 } from './visualInspectorSchema.js';
-import { getEquipmentRuleRowWarnings } from '@/topology/equipmentRules.js';
 
 const ELEMENT_LABEL_KEYS = Object.freeze({
   casing: 'ui.visual_inspector.element.casing',
@@ -31,26 +24,14 @@ const ELEMENT_LABEL_KEYS = Object.freeze({
 const ELEMENT_LABEL_FALLBACKS = Object.freeze({
   equipment: 'Equipment'
 });
-const INSPECTOR_GROUP_LABEL_KEYS = Object.freeze({
-  [VISUAL_INSPECTOR_FIELD_GROUP_KEYS.VISUAL]: 'ui.visual_inspector.group.visual',
-  [VISUAL_INSPECTOR_FIELD_GROUP_KEYS.ADVANCED_ENGINEERING]: 'ui.visual_inspector.group.advanced_engineering'
-});
-const INSPECTOR_GROUP_RENDER_ORDER = Object.freeze([
-  VISUAL_INSPECTOR_FIELD_GROUP_KEYS.VISUAL,
-  VISUAL_INSPECTOR_FIELD_GROUP_KEYS.ADVANCED_ENGINEERING
-]);
-const EQUIPMENT_ATTACH_WARNING_CODES = new Set([
-  'equipment_missing_attach_target',
-  'equipment_unresolved_attach_target',
-  'equipment_invalid_host_depth'
-]);
 
 const projectDataStore = useProjectDataStore();
 const { selectedVisualContext, hasSelectedVisualContext } = useSelectedVisualContext();
 const languageTick = ref(0);
 const formState = reactive({});
-const SLIDER_COMMIT_DELAY_MS = 24;
+const SLIDER_COMMIT_INTERVAL_MS = 24;
 const sliderCommitTimers = new Map();
+const sliderPendingValues = new Map();
 let unsubscribeLanguageChange = null;
 
 const inspectorFields = computed(() => {
@@ -61,49 +42,12 @@ const inspectorFields = computed(() => {
 });
 const inspectorFieldGroups = computed(() => {
   const fields = inspectorFields.value;
-  const elementType = selectedVisualContext.value?.elementType ?? null;
   if (fields.length === 0) return [];
-
-  if (elementType !== 'equipment') {
-    return [{
-      key: 'default',
-      labelKey: null,
-      fields
-    }];
-  }
-
-  const groupedFields = new Map();
-  fields.forEach((fieldDefinition) => {
-    const rawGroupKey = String(fieldDefinition?.groupKey ?? '').trim();
-    const groupKey = rawGroupKey || VISUAL_INSPECTOR_FIELD_GROUP_KEYS.VISUAL;
-    if (!groupedFields.has(groupKey)) {
-      groupedFields.set(groupKey, []);
-    }
-    groupedFields.get(groupKey).push(fieldDefinition);
-  });
-
-  const groups = [];
-  INSPECTOR_GROUP_RENDER_ORDER.forEach((groupKey) => {
-    const groupFieldDefinitions = groupedFields.get(groupKey) ?? [];
-    if (groupFieldDefinitions.length === 0) return;
-    groups.push({
-      key: groupKey,
-      labelKey: INSPECTOR_GROUP_LABEL_KEYS[groupKey] ?? null,
-      fields: groupFieldDefinitions
-    });
-    groupedFields.delete(groupKey);
-  });
-
-  groupedFields.forEach((groupFieldDefinitions, groupKey) => {
-    if (!Array.isArray(groupFieldDefinitions) || groupFieldDefinitions.length === 0) return;
-    groups.push({
-      key: groupKey,
-      labelKey: INSPECTOR_GROUP_LABEL_KEYS[groupKey] ?? null,
-      fields: groupFieldDefinitions
-    });
-  });
-
-  return groups;
+  return [{
+    key: 'default',
+    labelKey: null,
+    fields
+  }];
 });
 
 const selectedElementLabelKey = computed(() => (
@@ -123,18 +67,6 @@ const selectedElementLabel = computed(() => {
 function toDisplayText(value) {
   const normalized = String(value ?? '').trim();
   return normalized.length > 0 ? normalized : null;
-}
-
-function normalizeDepthValue(value) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function isDepthInsideRange(depth, top, bottom, epsilon = 1e-6) {
-  if (!Number.isFinite(depth) || !Number.isFinite(top) || !Number.isFinite(bottom)) return false;
-  const minDepth = Math.min(top, bottom) - epsilon;
-  const maxDepth = Math.max(top, bottom) + epsilon;
-  return depth >= minDepth && depth <= maxDepth;
 }
 
 function resolveSelectedElementName(context) {
@@ -175,11 +107,6 @@ const selectedElementDescriptor = computed(() => {
   return `${readableName} (${typeLabel} ${rowToken})`;
 });
 
-function normalizeRecommendationText(value) {
-  const normalized = String(value ?? '').trim();
-  return normalized.length > 0 ? normalized : null;
-}
-
 function resolveFieldPathTokens(fieldName) {
   return String(fieldName ?? '')
     .split('.')
@@ -197,121 +124,6 @@ function resolveValueByPath(source, fieldName) {
     cursor = cursor[token];
   }
   return cursor;
-}
-
-function expandWarningTargetFields(warning = {}, editableFieldNames = []) {
-  if (!Array.isArray(warning?.fields) || warning.fields.length === 0) return [];
-
-  const targets = new Set();
-  editableFieldNames.forEach((editableFieldName) => {
-    const matchesWarningField = warning.fields.some((warningField) => {
-      const normalizedWarningField = String(warningField ?? '').trim();
-      if (!normalizedWarningField) return false;
-      return editableFieldName === normalizedWarningField
-        || editableFieldName.startsWith(`${normalizedWarningField}.`);
-    });
-    if (matchesWarningField) {
-      targets.add(editableFieldName);
-    }
-  });
-
-  return [...targets];
-}
-
-const equipmentWarningState = computed(() => {
-  const context = selectedVisualContext.value;
-  if (!context || context.elementType !== 'equipment') {
-    return {
-      generalWarnings: [],
-      warningsByField: new Map()
-    };
-  }
-
-  const rowWarnings = getEquipmentRuleRowWarnings(context.rowData ?? {}, {
-    casingRows: context?.casingRows,
-    tubingRows: context?.tubingRows
-  });
-  const warningsByField = new Map();
-  const generalWarnings = [];
-  const editableFieldNames = inspectorFields.value.map((fieldDefinition) => fieldDefinition.field);
-
-  rowWarnings.forEach((warning, warningIndex) => {
-    const message = String(warning?.message ?? '').trim();
-    if (!message) return;
-
-    const warningItem = {
-      key: `${warning?.code ?? 'equipment-warning'}-${warningIndex}-${message}`,
-      code: String(warning?.code ?? '').trim() || null,
-      message,
-      recommendation: normalizeRecommendationText(warning?.recommendation)
-    };
-
-    const targetFields = expandWarningTargetFields(warning, editableFieldNames);
-
-    if (targetFields.length === 0) {
-      generalWarnings.push(warningItem);
-      return;
-    }
-
-    targetFields.forEach((field) => {
-      if (!warningsByField.has(field)) {
-        warningsByField.set(field, []);
-      }
-      warningsByField.get(field).push(warningItem);
-    });
-  });
-
-  return {
-    generalWarnings,
-    warningsByField
-  };
-});
-
-const equipmentAttachReadout = computed(() => {
-  const context = selectedVisualContext.value;
-  if (!context || context.elementType !== 'equipment') return null;
-  if (!isPackerEquipmentType(context?.rowData?.type)) return null;
-
-  const attachOptions = buildEquipmentAttachOptions(context?.casingRows, context?.tubingRows);
-  const selectedOption = resolveEquipmentAttachOption(context.rowData ?? {}, attachOptions);
-  const hostType = selectedOption?.hostType
-    ?? toDisplayText(context?.rowData?.attachToHostType);
-  const hostRowId = selectedOption?.rowId
-    ?? toDisplayText(context?.rowData?.attachToId);
-  const attachDisplay = selectedOption?.value
-    ?? toDisplayText(context?.rowData?.attachToDisplay);
-  const hostRows = hostType === 'tubing'
-    ? (Array.isArray(context?.tubingRows) ? context.tubingRows : [])
-    : (hostType === 'casing' ? (Array.isArray(context?.casingRows) ? context.casingRows : []) : []);
-  const hostRow = hostRows.find((row) => String(row?.rowId ?? '').trim() === hostRowId) ?? null;
-  const hostLabel = toDisplayText(hostRow?.label);
-  const depth = normalizeDepthValue(context?.rowData?.depth);
-  const hostTop = normalizeDepthValue(hostRow?.top);
-  const hostBottom = normalizeDepthValue(hostRow?.bottom);
-  const overlapsDepth = hostRow
-    ? isDepthInsideRange(depth, hostTop, hostBottom)
-    : null;
-  const attachWarnings = getEquipmentRuleRowWarnings(context.rowData ?? {}, {
-    casingRows: context?.casingRows,
-    tubingRows: context?.tubingRows
-  }).filter((warning) => EQUIPMENT_ATTACH_WARNING_CODES.has(String(warning?.code ?? '').trim()));
-
-  return {
-    attachDisplay,
-    hostType,
-    hostRowId,
-    hostLabel,
-    overlapsDepth,
-    warningText: attachWarnings[0]?.message ?? null
-  };
-});
-
-function getEquipmentWarningsForField(fieldDefinition) {
-  return equipmentWarningState.value.warningsByField.get(fieldDefinition.field) ?? [];
-}
-
-function hasEquipmentWarningsForField(fieldDefinition) {
-  return getEquipmentWarningsForField(fieldDefinition).length > 0;
 }
 
 function clearFormState() {
@@ -497,9 +309,11 @@ function clearSliderFieldCommit(fieldDefinition) {
   const fieldKey = String(fieldDefinition?.field ?? '').trim();
   if (!fieldKey) return;
   const existingTimer = sliderCommitTimers.get(fieldKey);
-  if (!existingTimer) return;
-  clearTimeout(existingTimer);
-  sliderCommitTimers.delete(fieldKey);
+  if (existingTimer) {
+    clearTimeout(existingTimer);
+    sliderCommitTimers.delete(fieldKey);
+  }
+  sliderPendingValues.delete(fieldKey);
 }
 
 function clearSliderCommitTimers() {
@@ -507,21 +321,34 @@ function clearSliderCommitTimers() {
     clearTimeout(timerId);
   });
   sliderCommitTimers.clear();
+  sliderPendingValues.clear();
 }
 
 function queueSliderFieldCommit(fieldDefinition, value) {
   const fieldKey = String(fieldDefinition?.field ?? '').trim();
   if (!fieldKey) return;
-  clearSliderFieldCommit(fieldDefinition);
+  sliderPendingValues.set(fieldKey, value);
+  if (sliderCommitTimers.has(fieldKey)) return;
+
   const timerId = setTimeout(() => {
     sliderCommitTimers.delete(fieldKey);
-    patchSelectedField(fieldDefinition, value);
-  }, SLIDER_COMMIT_DELAY_MS);
+    const pendingValue = sliderPendingValues.get(fieldKey);
+    sliderPendingValues.delete(fieldKey);
+    if (!Number.isFinite(normalizeNumberValue(pendingValue))) return;
+    patchSelectedField(fieldDefinition, pendingValue);
+  }, SLIDER_COMMIT_INTERVAL_MS);
   sliderCommitTimers.set(fieldKey, timerId);
 }
 
 function flushSliderFieldCommit(fieldDefinition, value) {
-  clearSliderFieldCommit(fieldDefinition);
+  const fieldKey = String(fieldDefinition?.field ?? '').trim();
+  if (!fieldKey) return;
+  const existingTimer = sliderCommitTimers.get(fieldKey);
+  if (existingTimer) {
+    clearTimeout(existingTimer);
+    sliderCommitTimers.delete(fieldKey);
+  }
+  sliderPendingValues.delete(fieldKey);
   patchSelectedField(fieldDefinition, value);
 }
 
@@ -659,70 +486,6 @@ onBeforeUnmount(() => {
           <strong>{{ selectedElementDescriptor }}</strong>
         </div>
 
-        <div v-if="equipmentWarningState.generalWarnings.length > 0" class="visual-property-inspector__warnings mt-2">
-          <p class="visual-property-inspector__warnings-title" data-i18n="ui.visual_inspector.equipment_warnings_title">
-            Equipment engineering warnings:
-          </p>
-          <ul class="visual-property-inspector__warnings-list">
-            <li
-              v-for="warning in equipmentWarningState.generalWarnings"
-              :key="warning.key"
-              class="visual-property-inspector__warnings-item"
-            >
-              <span>{{ warning.message }}</span>
-              <small v-if="warning.recommendation" class="visual-property-inspector__warning-recommendation">
-                <strong data-i18n="ui.visual_inspector.recommendation_label">Recommendation:</strong>
-                <span>{{ warning.recommendation }}</span>
-              </small>
-            </li>
-          </ul>
-        </div>
-
-        <div v-if="equipmentAttachReadout" class="visual-property-inspector__attach-readout mt-2">
-          <p class="visual-property-inspector__attach-title" data-i18n="ui.visual_inspector.attach_title">
-            Packer attach target:
-          </p>
-          <dl class="visual-property-inspector__attach-list">
-            <div class="visual-property-inspector__attach-row">
-              <dt data-i18n="ui.visual_inspector.attach_to_label">Attach To:</dt>
-              <dd>{{ equipmentAttachReadout.attachDisplay || '-' }}</dd>
-            </div>
-            <div class="visual-property-inspector__attach-row">
-              <dt data-i18n="ui.visual_inspector.attach_host_type_label">Host type:</dt>
-              <dd>{{ equipmentAttachReadout.hostType || '-' }}</dd>
-            </div>
-            <div class="visual-property-inspector__attach-row">
-              <dt data-i18n="ui.visual_inspector.attach_host_row_label">Host row:</dt>
-              <dd>{{ equipmentAttachReadout.hostLabel || equipmentAttachReadout.hostRowId || '-' }}</dd>
-            </div>
-            <div class="visual-property-inspector__attach-row">
-              <dt data-i18n="ui.visual_inspector.attach_status_label">Status:</dt>
-              <dd>
-                <span
-                  :class="[
-                    'visual-property-inspector__attach-status',
-                    equipmentAttachReadout.warningText
-                      ? 'visual-property-inspector__attach-status--warning'
-                      : 'visual-property-inspector__attach-status--ok'
-                  ]"
-                >
-                  {{
-                    equipmentAttachReadout.warningText
-                      ? t('ui.visual_inspector.attach_status_unresolved')
-                      : t('ui.visual_inspector.attach_status_resolved')
-                  }}
-                </span>
-              </dd>
-            </div>
-          </dl>
-          <p
-            v-if="equipmentAttachReadout.warningText"
-            class="visual-property-inspector__attach-warning"
-          >
-            {{ equipmentAttachReadout.warningText }}
-          </p>
-        </div>
-
         <div v-if="inspectorFields.length === 0" class="visual-property-inspector__empty mt-2">
           <span data-i18n="ui.visual_inspector.no_fields">No editable visual properties are available for this element.</span>
         </div>
@@ -844,26 +607,6 @@ onBeforeUnmount(() => {
                     <span>{{ slotProps.option.label }}</span>
                   </template>
                 </Select>
-
-                <div
-                  v-if="hasEquipmentWarningsForField(fieldDefinition)"
-                  class="visual-property-inspector__field-warnings"
-                >
-                  <p
-                    v-for="warning in getEquipmentWarningsForField(fieldDefinition)"
-                    :key="warning.key"
-                    class="visual-property-inspector__field-warning"
-                  >
-                    <span>{{ warning.message }}</span>
-                    <small
-                      v-if="warning.recommendation"
-                      class="visual-property-inspector__field-warning-recommendation"
-                    >
-                      <strong data-i18n="ui.visual_inspector.recommendation_label">Recommendation:</strong>
-                      <span>{{ warning.recommendation }}</span>
-                    </small>
-                  </p>
-                </div>
               </div>
             </div>
           </section>
@@ -933,103 +676,5 @@ onBeforeUnmount(() => {
 
 .visual-property-inspector__number-slider {
   width: 100%;
-}
-
-.visual-property-inspector__warnings {
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface-elevated);
-  padding: 8px 10px;
-}
-
-.visual-property-inspector__warnings-title {
-  margin: 0 0 6px;
-  font-size: 0.78rem;
-  color: var(--muted);
-}
-
-.visual-property-inspector__warnings-list {
-  margin: 0;
-  padding-left: 16px;
-}
-
-.visual-property-inspector__warnings-item {
-  font-size: 0.8rem;
-  line-height: 1.35;
-}
-
-.visual-property-inspector__warning-recommendation {
-  display: block;
-  margin-top: 2px;
-  color: var(--muted);
-}
-
-.visual-property-inspector__attach-readout {
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface-elevated);
-  padding: 8px 10px;
-}
-
-.visual-property-inspector__attach-title {
-  margin: 0 0 6px;
-  font-size: 0.78rem;
-  color: var(--muted);
-}
-
-.visual-property-inspector__attach-list {
-  margin: 0;
-  display: grid;
-  gap: 4px;
-}
-
-.visual-property-inspector__attach-row {
-  display: grid;
-  grid-template-columns: minmax(92px, auto) 1fr;
-  gap: 8px;
-  font-size: 0.8rem;
-}
-
-.visual-property-inspector__attach-row dt {
-  margin: 0;
-  color: var(--muted);
-  font-weight: 600;
-}
-
-.visual-property-inspector__attach-row dd {
-  margin: 0;
-}
-
-.visual-property-inspector__attach-status--ok {
-  color: var(--color-text);
-}
-
-.visual-property-inspector__attach-status--warning {
-  color: var(--p-red-500);
-}
-
-.visual-property-inspector__attach-warning {
-  margin: 6px 0 0;
-  font-size: 0.78rem;
-  color: var(--p-red-500);
-}
-
-.visual-property-inspector__field-warnings {
-  display: grid;
-  gap: 4px;
-  margin-top: 4px;
-}
-
-.visual-property-inspector__field-warning {
-  margin: 0;
-  font-size: 0.78rem;
-  line-height: 1.35;
-  color: var(--color-text);
-}
-
-.visual-property-inspector__field-warning-recommendation {
-  display: block;
-  margin-top: 1px;
-  color: var(--muted);
 }
 </style>

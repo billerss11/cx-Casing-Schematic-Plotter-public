@@ -2,18 +2,7 @@ import { computed } from 'vue';
 import { useInteractionStore } from '@/stores/interactionStore.js';
 import { useProjectDataStore } from '@/stores/projectDataStore.js';
 import { normalizeInteractionEntity } from '@/composables/useSchematicInteraction.js';
-
-const ENTITY_TYPE_TO_STORE_KEY = Object.freeze({
-    casing: 'casingData',
-    tubing: 'tubingData',
-    drillString: 'drillStringData',
-    equipment: 'equipmentData',
-    line: 'horizontalLines',
-    plug: 'cementPlugs',
-    fluid: 'annulusFluids',
-    marker: 'markers',
-    box: 'annotationBoxes'
-});
+import { resolveDomainEntryByEntityType } from '@/workspace/domainRegistry.js';
 
 function normalizeRowIndex(value) {
     if (value === null || value === undefined) return null;
@@ -115,13 +104,13 @@ function resolveSelectedVisualContext(interaction, projectDataStore) {
     const lockedEntity = normalizeInteractionEntity(interaction?.lockedEntity);
     if (!lockedEntity) return null;
 
-    const storeKey = ENTITY_TYPE_TO_STORE_KEY[lockedEntity.type];
-    if (!storeKey) return null;
+    const domainEntry = resolveDomainEntryByEntityType(lockedEntity.type);
+    if (!domainEntry?.storeKey || domainEntry.canHighlight !== true) return null;
 
     return resolveRowContext(
         projectDataStore,
         lockedEntity.type,
-        storeKey,
+        domainEntry.storeKey,
         lockedEntity.id
     );
 }

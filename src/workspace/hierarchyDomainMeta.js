@@ -9,6 +9,10 @@ import {
   mergeScenarioBreakoutRows,
   mergeScenarioSourceRows
 } from '@/topology/sourceRows.js';
+import {
+  DOMAIN_REGISTRY_ORDER,
+  getDomainRegistryEntry
+} from './domainRegistry.js';
 
 const DEFAULT_SOURCE_VOLUME_KEY = TOPOLOGY_VOLUME_KINDS[0] ?? null;
 const DEFAULT_BREAKOUT_FROM_VOLUME_KEY = TOPOLOGY_VOLUME_KINDS[2] ?? TOPOLOGY_VOLUME_KINDS[0] ?? null;
@@ -76,152 +80,87 @@ function cloneTopologyRows(rows) {
   return Array.isArray(rows) ? rows.map((row) => ({ ...row })) : [];
 }
 
+function createHierarchyDomainMetaEntry(domainKey, config = {}) {
+  const domainIdentity = getDomainRegistryEntry(domainKey);
+  const baseEntry = {
+    key: domainKey,
+    labelKey: String(config.labelKey ?? domainIdentity?.table?.labelKey ?? '').trim(),
+    fallbackLabel: String(config.fallbackLabel ?? domainIdentity?.table?.fallbackLabel ?? domainKey).trim(),
+    storeKey: String(config.storeKey ?? domainIdentity?.storeKey ?? '').trim(),
+    entityType: String(config.entityType ?? domainIdentity?.canonicalEntityType ?? domainKey).trim(),
+    canHighlight: config.canHighlight === undefined
+      ? domainIdentity?.canHighlight === true
+      : config.canHighlight === true,
+    canReorder: config.canReorder !== false
+  };
+  return Object.freeze({
+    ...baseEntry,
+    ...config
+  });
+}
+
 export const HIERARCHY_DOMAIN_META = Object.freeze({
-  casing: Object.freeze({
-    key: 'casing',
-    labelKey: 'ui.tabs.casing',
-    fallbackLabel: 'Casing',
-    storeKey: 'casingData',
-    entityType: 'casing',
-    canHighlight: true,
-    canReorder: true,
+  casing: createHierarchyDomainMetaEntry('casing', {
     commonFields: Object.freeze(['label', 'od', 'top', 'bottom', 'showTop', 'showBottom']),
     resolveRows: (wellData) => Array.isArray(wellData?.casingData) ? wellData.casingData : [],
     resolveItemLabel: (row, index) => resolveRowLabel(row, resolveIntervalFallback(row, index))
   }),
-  tubing: Object.freeze({
-    key: 'tubing',
-    labelKey: 'ui.tabs.tubing',
-    fallbackLabel: 'Tubing',
-    storeKey: 'tubingData',
-    entityType: 'tubing',
-    canHighlight: true,
-    canReorder: true,
+  tubing: createHierarchyDomainMetaEntry('tubing', {
     isVisible: ({ operationPhase }) => isProductionPhase(operationPhase),
     commonFields: Object.freeze(['label', 'od', 'top', 'bottom', 'showLabel']),
     resolveRows: (wellData) => Array.isArray(wellData?.tubingData) ? wellData.tubingData : [],
     resolveItemLabel: (row, index) => resolveRowLabel(row, resolveIntervalFallback(row, index))
   }),
-  drillString: Object.freeze({
-    key: 'drillString',
-    labelKey: 'ui.tabs.drill_string',
-    fallbackLabel: 'Drill String',
-    storeKey: 'drillStringData',
-    entityType: 'drillString',
-    canHighlight: true,
-    canReorder: true,
+  drillString: createHierarchyDomainMetaEntry('drillString', {
     isVisible: ({ operationPhase }) => !isProductionPhase(operationPhase),
     commonFields: Object.freeze(['label', 'componentType', 'od', 'top', 'bottom', 'showLabel']),
     resolveRows: (wellData) => Array.isArray(wellData?.drillStringData) ? wellData.drillStringData : [],
     resolveItemLabel: (row, index) => resolveRowLabel(row, resolveIntervalFallback(row, index))
   }),
-  equipment: Object.freeze({
-    key: 'equipment',
-    labelKey: 'ui.tabs.equipment',
-    fallbackLabel: 'Equipment',
-    storeKey: 'equipmentData',
-    entityType: 'equipment',
-    canHighlight: true,
-    canReorder: true,
+  equipment: createHierarchyDomainMetaEntry('equipment', {
     isVisible: ({ operationPhase }) => isProductionPhase(operationPhase),
     commonFields: Object.freeze(['type', 'depth', 'label', 'showLabel']),
     resolveRows: (wellData) => Array.isArray(wellData?.equipmentData) ? wellData.equipmentData : [],
     resolveItemLabel: (row, index) => resolveRowLabel(row, `Equipment ${resolveIntervalFallback(row, index)}`)
   }),
-  lines: Object.freeze({
-    key: 'lines',
-    labelKey: 'ui.tabs.lines',
-    fallbackLabel: 'Lines',
-    storeKey: 'horizontalLines',
-    entityType: 'line',
-    canHighlight: true,
-    canReorder: true,
+  lines: createHierarchyDomainMetaEntry('lines', {
     commonFields: Object.freeze(['label', 'depth', 'show']),
     resolveRows: (wellData) => Array.isArray(wellData?.horizontalLines) ? wellData.horizontalLines : [],
     resolveItemLabel: (row, index) => resolveRowLabel(row, resolveIntervalFallback(row, index))
   }),
-  plugs: Object.freeze({
-    key: 'plugs',
-    labelKey: 'ui.tabs.plugs',
-    fallbackLabel: 'Plugs',
-    storeKey: 'cementPlugs',
-    entityType: 'plug',
-    canHighlight: true,
-    canReorder: true,
+  plugs: createHierarchyDomainMetaEntry('plugs', {
     commonFields: Object.freeze(['label', 'top', 'bottom', 'show']),
     resolveRows: (wellData) => Array.isArray(wellData?.cementPlugs) ? wellData.cementPlugs : [],
     resolveItemLabel: (row, index) => resolveRowLabel(row, resolveIntervalFallback(row, index))
   }),
-  fluids: Object.freeze({
-    key: 'fluids',
-    labelKey: 'ui.tabs.fluids',
-    fallbackLabel: 'Fluids',
-    storeKey: 'annulusFluids',
-    entityType: 'fluid',
-    canHighlight: true,
-    canReorder: true,
+  fluids: createHierarchyDomainMetaEntry('fluids', {
     commonFields: Object.freeze(['label', 'placement', 'top', 'bottom', 'show']),
     resolveRows: (wellData) => Array.isArray(wellData?.annulusFluids) ? wellData.annulusFluids : [],
     resolveItemLabel: (row, index) => resolveRowLabel(row, resolveIntervalFallback(row, index))
   }),
-  markers: Object.freeze({
-    key: 'markers',
-    labelKey: 'ui.tabs.markers',
-    fallbackLabel: 'Markers',
-    storeKey: 'markers',
-    entityType: 'marker',
-    canHighlight: true,
-    canReorder: true,
+  markers: createHierarchyDomainMetaEntry('markers', {
     commonFields: Object.freeze(['label', 'type', 'top', 'bottom', 'show']),
     resolveRows: (wellData) => Array.isArray(wellData?.markers) ? wellData.markers : [],
     resolveItemLabel: (row, index) => resolveRowLabel(row, resolveIntervalFallback(row, index))
   }),
-  topologySources: Object.freeze({
-    key: 'topologySources',
-    labelKey: 'ui.tabs.topology_sources',
-    fallbackLabel: 'Inflow Points',
-    storeKey: 'topologySources',
-    entityType: 'topologySource',
-    canHighlight: false,
-    canReorder: true,
+  topologySources: createHierarchyDomainMetaEntry('topologySources', {
     commonFields: Object.freeze(['label', 'sourceType', 'top', 'bottom', 'volumeKey', 'show']),
     resolveRows: (wellData) => filterScenarioSourceRows(wellData?.topologySources),
     mergeRows: (allRows, rowsForDomain) => mergeScenarioSourceRows(allRows, rowsForDomain),
     resolveItemLabel: (row, index) => resolveTopologySourceLabel(row, index)
   }),
-  topologyBreakouts: Object.freeze({
-    key: 'topologyBreakouts',
-    labelKey: 'ui.tabs.topology_breakouts',
-    fallbackLabel: 'Crossflow Paths',
-    storeKey: 'topologySources',
-    entityType: 'topologyBreakout',
-    canHighlight: false,
-    canReorder: true,
+  topologyBreakouts: createHierarchyDomainMetaEntry('topologyBreakouts', {
     commonFields: Object.freeze(['label', 'fromVolumeKey', 'toVolumeKey', 'top', 'bottom', 'show']),
     resolveRows: (wellData) => filterScenarioBreakoutRows(wellData?.topologySources),
     mergeRows: (allRows, rowsForDomain) => mergeScenarioBreakoutRows(allRows, rowsForDomain),
     resolveItemLabel: (row, index) => resolveTopologyBreakoutLabel(row, index)
   }),
-  boxes: Object.freeze({
-    key: 'boxes',
-    labelKey: 'ui.tabs.boxes',
-    fallbackLabel: 'Boxes',
-    storeKey: 'annotationBoxes',
-    entityType: 'box',
-    canHighlight: true,
-    canReorder: true,
+  boxes: createHierarchyDomainMetaEntry('boxes', {
     commonFields: Object.freeze(['label', 'topDepth', 'bottomDepth', 'show']),
     resolveRows: (wellData) => Array.isArray(wellData?.annotationBoxes) ? wellData.annotationBoxes : [],
     resolveItemLabel: (row, index) => resolveRowLabel(row, resolveIntervalFallback(row, index))
   }),
-  trajectory: Object.freeze({
-    key: 'trajectory',
-    labelKey: 'ui.tabs.trajectory',
-    fallbackLabel: 'Well Trajectory',
-    storeKey: 'trajectory',
-    entityType: 'trajectory',
-    canHighlight: false,
-    canReorder: true,
+  trajectory: createHierarchyDomainMetaEntry('trajectory', {
     isVisible: ({ viewMode }) => isDirectionalView(viewMode),
     commonFields: Object.freeze(['md', 'inc', 'azi', 'comment']),
     resolveRows: (wellData) => Array.isArray(wellData?.trajectory) ? wellData.trajectory : [],
@@ -229,20 +168,7 @@ export const HIERARCHY_DOMAIN_META = Object.freeze({
   })
 });
 
-export const HIERARCHY_DOMAIN_ORDER = Object.freeze([
-  'casing',
-  'tubing',
-  'drillString',
-  'equipment',
-  'lines',
-  'plugs',
-  'fluids',
-  'markers',
-  'topologySources',
-  'topologyBreakouts',
-  'boxes',
-  'trajectory'
-]);
+export const HIERARCHY_DOMAIN_ORDER = DOMAIN_REGISTRY_ORDER;
 
 export function getHierarchyDomainMeta(domainKey) {
   return HIERARCHY_DOMAIN_META[String(domainKey ?? '').trim()] ?? null;

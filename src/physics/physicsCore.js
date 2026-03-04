@@ -11,6 +11,7 @@ import {
     resolvePipeHostReference
 } from '@/utils/pipeReference.js';
 import { isPackerEquipmentType, normalizeEquipmentAttachHostType } from '@/utils/equipmentAttachReference.js';
+import { resolveEquipmentTypeLabel } from '@/topology/equipmentDefinitions/index.js';
 import {
     FLUID_PLACEMENT_AUTO_OPTIONS,
     FLUID_PLACEMENT_DEFAULT_OPTION,
@@ -254,19 +255,6 @@ function normalizeEquipmentRows(equipmentData = []) {
             };
         })
         .filter(Boolean);
-}
-
-function normalizeEquipmentType(type) {
-    const normalized = String(type ?? '').trim().toLowerCase();
-    if (!normalized) return '';
-    if (normalized === 'packer') return 'Packer';
-    if (normalized === 'bridge plug' || normalized === 'bridge_plug' || normalized === 'bridge-plug') {
-        return 'Bridge Plug';
-    }
-    if (normalized === 'safety valve' || normalized === 'safety_valve' || normalized === 'safety-valve') {
-        return 'Safety Valve';
-    }
-    return String(type ?? '').trim();
 }
 
 function normalizeFluidRows(fluidRows = []) {
@@ -683,7 +671,7 @@ export function resolveEquipment(equipmentRows = [], tubingRows = [], casingRows
 
         const equipmentBase = {
             ...equip,
-            type: normalizeEquipmentType(equip?.type),
+            type: resolveEquipmentTypeLabel(equip?.type),
             tubingParentIndex: tubingParent?.__index ?? null,
             tubingParentOD: tubingParent?.od ?? null,
             tubingParentID: tubingParent?.innerDiameter ?? null,
@@ -1236,7 +1224,7 @@ function collectBarrierBoundaryReasons(depth, context, reasons) {
 function collectEquipmentBoundaryReasons(depth, context, reasons) {
     (context.equipment ?? []).forEach((row) => {
         if (!isBoundaryDepth(depth, row?.depth)) return;
-        const normalizedType = normalizeEquipmentType(row?.type);
+        const normalizedType = resolveEquipmentTypeLabel(row?.type);
         const fallbackLabel = normalizedType || 'Equipment';
         const rowLabel = resolveBoundaryRowLabel(row, fallbackLabel, row?.sourceIndex ?? row?.__index);
 

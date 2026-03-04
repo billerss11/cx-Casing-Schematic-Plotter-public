@@ -15,14 +15,10 @@ defineProps({
   canDuplicate: {
     type: Boolean,
     default: false
-  },
-  canDelete: {
-    type: Boolean,
-    default: false
   }
 });
 
-defineEmits(['add', 'move-up', 'move-down', 'duplicate', 'delete']);
+defineEmits(['add', 'move-up', 'move-down', 'duplicate']);
 </script>
 
 <template>
@@ -63,15 +59,6 @@ defineEmits(['add', 'move-up', 'move-down', 'duplicate', 'delete']);
       title="Duplicate"
       @click="$emit('duplicate')"
     />
-    <Button
-      type="button"
-      size="small"
-      icon="pi pi-trash"
-      severity="danger"
-      :disabled="!canDelete"
-      title="Delete"
-      @click="$emit('delete')"
-    />
   </div>
 </template>
 
@@ -79,6 +66,6 @@ defineEmits(['add', 'move-up', 'move-down', 'duplicate', 'delete']);
 .left-hierarchy-node-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--spacing-xs);
 }
 </style>

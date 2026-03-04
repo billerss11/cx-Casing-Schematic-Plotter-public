@@ -8,6 +8,7 @@ import SelectButton from 'primevue/selectbutton';
 import SplitButton from 'primevue/splitbutton';
 import DataManagementControls from '@/components/controls/DataManagementControls.vue';
 import { onLanguageChange, t } from '@/app/i18n.js';
+import { selectEntityByRowRef } from '@/app/selection.js';
 import {
   downloadEditedWorkbook,
   downloadExcelTemplate,
@@ -24,12 +25,14 @@ import {
   parseProjectJsonFileToV3,
   resetData
 } from '@/app/importWorkflows.js';
+import { useEntityEditorActions } from '@/composables/useEntityEditorActions.js';
 import { useProjectStore } from '@/stores/projectStore.js';
 
 const EXCEL_EXPORT_SCOPE_ACTIVE_WELL = 'active-well';
 const EXCEL_EXPORT_SCOPE_ALL_WELLS = 'all-wells';
 
 const projectStore = useProjectStore();
+const { undoLastDelete } = useEntityEditorActions();
 const replaceProjectFileInput = ref(null);
 const appendProjectFileInput = ref(null);
 const isDataManagementVisible = ref(false);
@@ -324,6 +327,14 @@ function handleGlobalProjectShortcut(event) {
   if (key === 'i') {
     event.preventDefault();
     triggerReplaceProjectLoad();
+    return;
+  }
+
+  if (key === 'z' && event?.shiftKey !== true) {
+    const restoredRowRef = undoLastDelete();
+    if (!restoredRowRef?.wellId || !restoredRowRef?.entityType || !restoredRowRef?.rowId) return;
+    event.preventDefault();
+    void selectEntityByRowRef(restoredRowRef);
   }
 }
 
@@ -880,7 +891,7 @@ onBeforeUnmount(() => {
   padding: 4px 6px;
   border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
   border-radius: var(--radius-pill);
-  background: color-mix(in srgb, var(--panel-bg, #f8fafc) 92%, transparent);
+  background: color-mix(in srgb, var(--panel-bg) 92%, transparent);
 }
 
 .workspace-project-actions__well-switcher {
@@ -917,15 +928,15 @@ onBeforeUnmount(() => {
 }
 
 .workspace-project-actions__save-status--saved {
-  color: var(--p-green-700, #047857);
-  background: color-mix(in srgb, var(--p-green-100, #dcfce7) 85%, transparent);
-  border-color: color-mix(in srgb, var(--p-green-400, #4ade80) 45%, transparent);
+  color: var(--color-status-saved-text);
+  background: var(--color-status-saved-bg);
+  border-color: var(--color-status-saved-border);
 }
 
 .workspace-project-actions__save-status--dirty {
-  color: var(--p-orange-800, #9a3412);
-  background: color-mix(in srgb, var(--p-orange-100, #ffedd5) 90%, transparent);
-  border-color: color-mix(in srgb, var(--p-orange-400, #fb923c) 45%, transparent);
+  color: var(--color-status-dirty-text);
+  background: var(--color-status-dirty-bg);
+  border-color: var(--color-status-dirty-border);
 }
 
 .workspace-project-actions__dialog-body {
@@ -945,7 +956,7 @@ onBeforeUnmount(() => {
 }
 
 .workspace-project-actions__dialog-error {
-  color: var(--p-red-500, #b42318);
+  color: var(--color-status-error-text);
 }
 
 .workspace-project-actions__dialog-footer {

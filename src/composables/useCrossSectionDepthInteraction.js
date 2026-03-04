@@ -42,6 +42,11 @@ export function useCrossSectionDepthInteraction(options = {}) {
     animationFrameId = null;
   }
 
+  function clearPendingHover() {
+    cancelHoverFrame();
+    pendingPointer = null;
+  }
+
   function commitDepth(nextDepth) {
     const depth = toFiniteNumber(nextDepth);
     if (!Number.isFinite(depth)) return false;
@@ -98,10 +103,13 @@ export function useCrossSectionDepthInteraction(options = {}) {
 
   function lockDepthFromEvent(event) {
     if (unref(options.visible) !== true) return false;
+    if (depthLocked.value) {
+      unlockDepth();
+      return true;
+    }
     const pointer = resolveClientPointer(event);
     if (!pointer) return false;
-    cancelHoverFrame();
-    pendingPointer = null;
+    clearPendingHover();
     const nextDepth = resolveDepthFromPointer(pointer);
     if (!Number.isFinite(nextDepth)) return false;
     commitDepth(nextDepth);
@@ -114,16 +122,16 @@ export function useCrossSectionDepthInteraction(options = {}) {
   }
 
   function handleMouseLeave() {
-    cancelHoverFrame();
-    pendingPointer = null;
-    if (options.unlockOnMouseLeave !== false) {
+    clearPendingHover();
+    if (options.unlockOnMouseLeave === true) {
       unlockDepth();
     }
   }
 
   watch(() => unref(options.visible), (visible) => {
     if (visible === true) return;
-    handleMouseLeave();
+    clearPendingHover();
+    unlockDepth();
     lastCommittedDepth = null;
   }, { immediate: true });
 
@@ -133,7 +141,8 @@ export function useCrossSectionDepthInteraction(options = {}) {
   }, { immediate: true });
 
   onBeforeUnmount(() => {
-    handleMouseLeave();
+    clearPendingHover();
+    unlockDepth();
   });
 
   return {

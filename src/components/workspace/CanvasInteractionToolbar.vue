@@ -21,6 +21,50 @@ const isDepthCursorEnabled = computed(() => config.showDepthCursor === true);
 const isCrossSectionEnabled = computed(() => config.showDepthCrossSection === true);
 const isPhysicsDebugEnabled = computed(() => config.showPhysicsDebug === true);
 const isDirectionalView = computed(() => config.viewMode === 'directional');
+const CAMERA_ZOOM_STEP = 0.25;
+const isCameraTransformGlobalEnabled = computed(() => (
+  viewConfigStore.uiState?.useCameraTransform === true
+));
+const isCameraTransformModeEnabled = computed(() => (
+  config.viewMode === 'directional'
+    ? viewConfigStore.uiState?.cameraTransformDirectional === true
+    : viewConfigStore.uiState?.cameraTransformVertical === true
+));
+const isCameraTransformEnabledForCurrentView = computed(() => (
+  isCameraTransformGlobalEnabled.value === true &&
+  isCameraTransformModeEnabled.value === true
+));
+const cameraControlsToggleTitle = computed(() => (
+  isCameraTransformEnabledForCurrentView.value
+    ? 'Disable camera controls (pan + zoom)'
+    : 'Enable camera controls (pan + zoom)'
+));
+const cameraControlsToggleAriaLabel = computed(() => (
+  isCameraTransformEnabledForCurrentView.value
+    ? 'Disable camera controls'
+    : 'Enable camera controls'
+));
+const cameraControlsStateLabel = computed(() => (
+  isCameraTransformEnabledForCurrentView.value ? 'ON' : 'OFF'
+));
+const isCameraZoomAvailableForCurrentView = computed(() => (
+  isCameraTransformEnabledForCurrentView.value === true
+));
+const isFitToDataAvailableForCurrentView = computed(() => (
+  config.viewMode === 'directional' ? true : isCameraTransformEnabledForCurrentView.value === true
+));
+const currentCameraState = computed(() => (
+  config.viewMode === 'directional'
+    ? viewConfigStore.uiState?.directionalCamera
+    : viewConfigStore.uiState?.verticalCamera
+));
+const hasCurrentCameraViewOffset = computed(() => {
+  const scale = Number(currentCameraState.value?.scale);
+  const translateX = Number(currentCameraState.value?.translateX);
+  const translateY = Number(currentCameraState.value?.translateY);
+  if (!Number.isFinite(scale) || !Number.isFinite(translateX) || !Number.isFinite(translateY)) return false;
+  return Math.abs(scale - 1) > 1e-6 || Math.abs(translateX) > 1e-6 || Math.abs(translateY) > 1e-6;
+});
 const isDisplayControlsOpen = ref(false);
 const displayControlsPopoverRef = ref(null);
 const annotationToolMode = computed(() => (
@@ -71,6 +115,62 @@ function toggleCrossSection() {
 
 function togglePhysicsDebug() {
   viewConfigStore.setShowPhysicsDebug(!isPhysicsDebugEnabled.value);
+}
+
+function toggleCameraTransformForCurrentView() {
+  const nextEnabled = !isCameraTransformEnabledForCurrentView.value;
+  viewConfigStore.setUseCameraTransform(true);
+
+  if (config.viewMode === 'directional') {
+    viewConfigStore.setCameraTransformDirectional(nextEnabled);
+  } else {
+    viewConfigStore.setCameraTransformVertical(nextEnabled);
+  }
+
+  if (nextEnabled) return;
+
+  const hasOtherModeEnabled = config.viewMode === 'directional'
+    ? viewConfigStore.uiState?.cameraTransformVertical === true
+    : viewConfigStore.uiState?.cameraTransformDirectional === true;
+  if (!hasOtherModeEnabled) {
+    viewConfigStore.setUseCameraTransform(false);
+  }
+}
+
+function resetCameraPanForCurrentView() {
+  if (config.viewMode === 'directional') {
+    viewConfigStore.resetDirectionalCameraView();
+    return;
+  }
+  viewConfigStore.resetVerticalCameraView();
+}
+
+function zoomCameraIn() {
+  if (!isCameraZoomAvailableForCurrentView.value) return;
+  if (config.viewMode === 'directional') {
+    viewConfigStore.zoomDirectionalCameraBy(CAMERA_ZOOM_STEP);
+    return;
+  }
+  viewConfigStore.zoomVerticalCameraBy(CAMERA_ZOOM_STEP);
+}
+
+function zoomCameraOut() {
+  if (!isCameraZoomAvailableForCurrentView.value) return;
+  if (config.viewMode === 'directional') {
+    viewConfigStore.zoomDirectionalCameraBy(-CAMERA_ZOOM_STEP);
+    return;
+  }
+  viewConfigStore.zoomVerticalCameraBy(-CAMERA_ZOOM_STEP);
+}
+
+function fitToDataForCurrentView() {
+  if (config.viewMode === 'directional') {
+    viewConfigStore.requestDirectionalFitToData();
+    viewConfigStore.resetDirectionalCameraView();
+    return;
+  }
+  if (!isCameraTransformEnabledForCurrentView.value) return;
+  viewConfigStore.resetVerticalCameraView();
 }
 
 function toggleDisplayControlsPanel(event) {
@@ -184,6 +284,69 @@ function setAnnotationToolMode(mode) {
       <i class="pi pi-sliders-h" aria-hidden="true"></i>
     </button>
 
+    <button
+      type="button"
+      class="canvas-interaction-toolbar__button canvas-interaction-toolbar__button--camera-toggle"
+      :class="{ 'canvas-interaction-toolbar__button--active': isCameraTransformEnabledForCurrentView }"
+      :title="cameraControlsToggleTitle"
+      :aria-label="cameraControlsToggleAriaLabel"
+      :aria-pressed="isCameraTransformEnabledForCurrentView"
+      @click="toggleCameraTransformForCurrentView"
+    >
+      <i class="pi pi-arrows-alt" aria-hidden="true"></i>
+      <span
+        class="canvas-interaction-toolbar__camera-state"
+        :class="{ 'canvas-interaction-toolbar__camera-state--on': isCameraTransformEnabledForCurrentView }"
+        aria-hidden="true"
+      >
+        {{ cameraControlsStateLabel }}
+      </span>
+    </button>
+
+    <button
+      type="button"
+      class="canvas-interaction-toolbar__button"
+      title="Zoom in"
+      aria-label="Zoom in"
+      :disabled="!isCameraZoomAvailableForCurrentView"
+      @click="zoomCameraIn"
+    >
+      <i class="pi pi-plus" aria-hidden="true"></i>
+    </button>
+
+    <button
+      type="button"
+      class="canvas-interaction-toolbar__button"
+      title="Zoom out"
+      aria-label="Zoom out"
+      :disabled="!isCameraZoomAvailableForCurrentView"
+      @click="zoomCameraOut"
+    >
+      <i class="pi pi-minus" aria-hidden="true"></i>
+    </button>
+
+    <button
+      type="button"
+      class="canvas-interaction-toolbar__button"
+      title="Fit to data"
+      aria-label="Fit to data"
+      :disabled="!isFitToDataAvailableForCurrentView"
+      @click="fitToDataForCurrentView"
+    >
+      <i class="pi pi-expand" aria-hidden="true"></i>
+    </button>
+
+    <button
+      type="button"
+      class="canvas-interaction-toolbar__button"
+      title="Reset camera view"
+      aria-label="Reset camera view"
+      :disabled="!hasCurrentCameraViewOffset"
+      @click="resetCameraPanForCurrentView"
+    >
+      <i class="pi pi-refresh" aria-hidden="true"></i>
+    </button>
+
     <span class="canvas-interaction-toolbar__divider" aria-hidden="true"></span>
 
     <button
@@ -266,9 +429,37 @@ function setAnnotationToolMode(mode) {
   background: color-mix(in srgb, var(--color-accent-primary) 10%, transparent);
 }
 
+.canvas-interaction-toolbar__button--camera-toggle {
+  width: auto;
+  min-width: 58px;
+  padding-inline: 8px;
+  gap: 4px;
+}
+
+.canvas-interaction-toolbar__button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .canvas-interaction-toolbar__button--active {
   border-color: color-mix(in srgb, var(--color-accent-primary-strong) 70%, transparent);
   background: color-mix(in srgb, var(--color-accent-primary) 18%, transparent);
+  color: var(--color-accent-primary-strong);
+}
+
+.canvas-interaction-toolbar__camera-state {
+  font-size: 0.56rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-text-secondary) 32%, transparent);
+  color: var(--color-text-secondary);
+}
+
+.canvas-interaction-toolbar__camera-state--on {
+  background: color-mix(in srgb, var(--color-accent-primary) 30%, transparent);
   color: var(--color-accent-primary-strong);
 }
 

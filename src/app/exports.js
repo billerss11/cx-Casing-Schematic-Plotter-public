@@ -423,6 +423,212 @@ function buildPlotFilename(ext, scale = 1) {
     return `${base}${suffix}.${ext}`;
 }
 
+function parseSvgLength(value) {
+    const token = String(value ?? '').trim();
+    if (!token || token.endsWith('%')) return null;
+    const parsed = Number.parseFloat(token);
+    if (!Number.isFinite(parsed) || parsed <= 0) return null;
+    return parsed;
+}
+
+function parseViewBoxDimensions(value) {
+    const token = String(value ?? '').trim();
+    if (!token) return { width: null, height: null };
+
+    const parts = token
+        .split(/[\s,]+/)
+        .map((entry) => Number.parseFloat(entry))
+        .filter((entry) => Number.isFinite(entry));
+    if (parts.length !== 4) return { width: null, height: null };
+
+    const width = parts[2] > 0 ? parts[2] : null;
+    const height = parts[3] > 0 ? parts[3] : null;
+    return { width, height };
+}
+
+function parsePositiveDimension(value) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed <= 0) return null;
+    return parsed;
+}
+
+function resolveExplicitExportDimensions(svg) {
+    if (!svg) return { width: null, height: null };
+    const exportWidth = parseSvgLength(svg.getAttribute?.('data-export-width'));
+    const exportHeight = parseSvgLength(svg.getAttribute?.('data-export-height'));
+    if (!exportWidth || !exportHeight) {
+        return { width: null, height: null };
+    }
+    return {
+        width: exportWidth,
+        height: exportHeight
+    };
+}
+
+export function resolveSvgRasterDimensions(svg) {
+    if (!svg) return { width: 0, height: 0 };
+
+    const explicitExport = resolveExplicitExportDimensions(svg);
+    if (explicitExport.width && explicitExport.height) {
+        return {
+            width: explicitExport.width,
+            height: explicitExport.height
+        };
+    }
+
+    const attrWidth = parseSvgLength(svg.getAttribute?.('width'));
+    const attrHeight = parseSvgLength(svg.getAttribute?.('height'));
+    if (attrWidth && attrHeight) {
+        return {
+            width: attrWidth,
+            height: attrHeight
+        };
+    }
+
+    const viewBoxFromAttribute = parseViewBoxDimensions(svg.getAttribute?.('viewBox'));
+    const baseViewBox = svg.viewBox?.baseVal;
+    const viewBoxWidth = viewBoxFromAttribute.width ?? parsePositiveDimension(baseViewBox?.width);
+    const viewBoxHeight = viewBoxFromAttribute.height ?? parsePositiveDimension(baseViewBox?.height);
+    if (viewBoxWidth && viewBoxHeight) {
+        return {
+            width: viewBoxWidth,
+            height: viewBoxHeight
+        };
+    }
+
+    const rect = typeof svg.getBoundingClientRect === 'function'
+        ? svg.getBoundingClientRect()
+        : null;
+    const rectWidth = parsePositiveDimension(rect?.width);
+    const rectHeight = parsePositiveDimension(rect?.height);
+    if (rectWidth && rectHeight) {
+        return {
+            width: rectWidth,
+            height: rectHeight
+        };
+    }
+
+    return { width: 0, height: 0 };
+}
+
+function normalizeRasterDimension(value) {
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed <= 0) return null;
+    return parsed;
+}
+
+function normalizeAlphaThreshold(value) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return 0;
+    return Math.max(0, Math.min(254, Math.floor(parsed)));
+}
+
+function normalizeRasterPadding(value) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return 0;
+    return Math.max(0, Math.floor(parsed));
+}
+
+export function resolveNonTransparentRasterBounds(imageData, options = {}) {
+    const width = normalizeRasterDimension(imageData?.width);
+    const height = normalizeRasterDimension(imageData?.height);
+    const pixels = imageData?.data;
+
+    if (!width || !height || !pixels || typeof pixels.length !== 'number') return null;
+    if (pixels.length < width * height * 4) return null;
+
+    const alphaThreshold = normalizeAlphaThreshold(options.alphaThreshold);
+    const padding = normalizeRasterPadding(options.padding);
+    let minX = width;
+    let minY = height;
+    let maxX = -1;
+    let maxY = -1;
+
+    for (let y = 0; y < height; y += 1) {
+        let alphaIndex = (y * width * 4) + 3;
+        for (let x = 0; x < width; x += 1) {
+            if (pixels[alphaIndex] > alphaThreshold) {
+                if (x < minX) minX = x;
+                if (x > maxX) maxX = x;
+                if (y < minY) minY = y;
+                if (y > maxY) maxY = y;
+            }
+            alphaIndex += 4;
+        }
+    }
+
+    if (maxX < minX || maxY < minY) return null;
+    const left = Math.max(0, minX - padding);
+    const top = Math.max(0, minY - padding);
+    const right = Math.min(width - 1, maxX + padding);
+    const bottom = Math.min(height - 1, maxY + padding);
+
+    return {
+        x: left,
+        y: top,
+        width: (right - left) + 1,
+        height: (bottom - top) + 1
+    };
+}
+
+function resolveRasterCropBounds(ctx, width, height, options = {}) {
+    if (options.trimWhitespace === false) return null;
+    try {
+        const imageData = ctx.getImageData(0, 0, width, height);
+        return resolveNonTransparentRasterBounds(imageData, {
+            alphaThreshold: options.alphaThreshold,
+            padding: options.trimPaddingPx
+        });
+    } catch {
+        return null;
+    }
+}
+
+function resolveRasterExportRegion(sourceCanvas, sourceCtx, options = {}) {
+    const fullRegion = {
+        x: 0,
+        y: 0,
+        width: sourceCanvas.width,
+        height: sourceCanvas.height
+    };
+    const trimmedRegion = resolveRasterCropBounds(
+        sourceCtx,
+        sourceCanvas.width,
+        sourceCanvas.height,
+        options
+    );
+    return trimmedRegion ?? fullRegion;
+}
+
+function createRasterOutputCanvas(sourceCanvas, sourceCtx, options = {}) {
+    const region = resolveRasterExportRegion(sourceCanvas, sourceCtx, options);
+    const outputCanvas = document.createElement('canvas');
+    outputCanvas.width = region.width;
+    outputCanvas.height = region.height;
+
+    const outputCtx = outputCanvas.getContext('2d');
+    if (!outputCtx) return sourceCanvas;
+
+    outputCtx.imageSmoothingEnabled = true;
+    outputCtx.imageSmoothingQuality = 'high';
+
+    const backgroundColor = String(options.backgroundColor ?? 'white').trim() || 'white';
+    outputCtx.fillStyle = backgroundColor;
+    outputCtx.fillRect(0, 0, outputCanvas.width, outputCanvas.height);
+    outputCtx.drawImage(
+        sourceCanvas,
+        region.x,
+        region.y,
+        region.width,
+        region.height,
+        0,
+        0,
+        region.width,
+        region.height
+    );
+    return outputCanvas;
+}
+
 const SVG_EXPORT_STYLE_PROPERTIES = Object.freeze([
     'fill',
     'fill-opacity',
@@ -474,7 +680,7 @@ function inlineSvgComputedStyles(sourceNode, targetNode) {
     });
 }
 
-function serializeStyledSvg(svg) {
+export function serializeStyledSvg(svg) {
     if (!svg) return '';
     const clonedSvg = svg.cloneNode(true);
     if (!clonedSvg) return '';
@@ -487,6 +693,14 @@ function serializeStyledSvg(svg) {
         inlineSvgComputedStyles(sourceNodes[index], clonedNodes[index]);
     }
 
+    const explicitExport = resolveExplicitExportDimensions(svg);
+    if (explicitExport.width && explicitExport.height) {
+        clonedSvg.setAttribute('width', String(explicitExport.width));
+        clonedSvg.setAttribute('height', String(explicitExport.height));
+    }
+    clonedSvg.removeAttribute('data-export-width');
+    clonedSvg.removeAttribute('data-export-height');
+
     clonedSvg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
     clonedSvg.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
     return new XMLSerializer().serializeToString(clonedSvg);
@@ -497,28 +711,28 @@ function downloadRaster(format, options = {}) {
     if (!svg) return;
     const svgData = serializeStyledSvg(svg);
     if (!svgData) return;
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    const sourceCanvas = document.createElement('canvas');
+    const sourceCtx = sourceCanvas.getContext('2d');
+    if (!sourceCtx) return;
     const img = new Image();
     
-    const width = parseFloat(svg.getAttribute('width')) || 0;
-    const height = parseFloat(svg.getAttribute('height')) || 0;
+    const { width, height } = resolveSvgRasterDimensions(svg);
+    if (width <= 0 || height <= 0) return;
     const safeScale = Number.isFinite(options.scale) && options.scale > 0 ? options.scale : 1;
-    canvas.width = Math.round(width * safeScale);
-    canvas.height = Math.round(height * safeScale);
+    sourceCanvas.width = Math.max(1, Math.round(width * safeScale));
+    sourceCanvas.height = Math.max(1, Math.round(height * safeScale));
     
     img.onload = function() {
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
-        ctx.fillStyle = 'white';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.save();
-        ctx.scale(safeScale, safeScale);
-        ctx.drawImage(img, 0, 0);
-        ctx.restore();
+        sourceCtx.imageSmoothingEnabled = true;
+        sourceCtx.imageSmoothingQuality = 'high';
+        sourceCtx.save();
+        sourceCtx.scale(safeScale, safeScale);
+        sourceCtx.drawImage(img, 0, 0);
+        sourceCtx.restore();
+
+        const outputCanvas = createRasterOutputCanvas(sourceCanvas, sourceCtx, options);
         
-        canvas.toBlob(function(blob) {
+        outputCanvas.toBlob(function(blob) {
             if (!blob) return;
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -541,24 +755,36 @@ function downloadRaster(format, options = {}) {
 export function downloadPNG(scale = 3) {
     const safeScale = Number.isFinite(scale) && scale > 0 ? scale : 3;
     const filename = buildPlotFilename('png', safeScale);
-    downloadRaster('image/png', { scale: safeScale, filename });
+    const trimPaddingPx = Math.max(1, Math.round(safeScale * 2));
+    downloadRaster('image/png', {
+        scale: safeScale,
+        filename,
+        trimWhitespace: true,
+        trimPaddingPx
+    });
 }
 
 export function downloadJPEG(quality = 0.92, scale = 3) {
     const safeScale = Number.isFinite(scale) && scale > 0 ? scale : 3;
+    const trimPaddingPx = Math.max(1, Math.round(safeScale * 2));
     downloadRaster('image/jpeg', {
         scale: safeScale,
         quality: clamp(quality, 0.5, 1.0),
-        filename: buildPlotFilename('jpg', safeScale)
+        filename: buildPlotFilename('jpg', safeScale),
+        trimWhitespace: true,
+        trimPaddingPx
     });
 }
 
 export function downloadWebP(quality = 0.9, scale = 3) {
     const safeScale = Number.isFinite(scale) && scale > 0 ? scale : 3;
+    const trimPaddingPx = Math.max(1, Math.round(safeScale * 2));
     downloadRaster('image/webp', {
         scale: safeScale,
         quality: clamp(quality, 0.5, 1.0),
-        filename: buildPlotFilename('webp', safeScale)
+        filename: buildPlotFilename('webp', safeScale),
+        trimWhitespace: true,
+        trimPaddingPx
     });
 }
 
