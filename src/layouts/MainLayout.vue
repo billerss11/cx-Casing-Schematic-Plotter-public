@@ -2,6 +2,7 @@
 import { computed } from 'vue';
 import DesignWorkspace from '@/views/DesignWorkspace.vue';
 import AnalysisWorkspace from '@/views/AnalysisWorkspace.vue';
+import LasWorkspace from '@/views/LasWorkspace.vue';
 import SettingsWorkspace from '@/views/SettingsWorkspace.vue';
 import WorkspaceActivityShell from '@/components/workspace/WorkspaceActivityShell.vue';
 import { ACTIVITY_TO_VIEW, useWorkspaceStore } from '@/stores/workspaceStore.js';
@@ -22,6 +23,13 @@ const primaryActivities = [
     label: 'Analysis',
     labelKey: 'ui.activity.analysis',
     ariaLabel: 'Analysis workspace'
+  },
+  {
+    id: 'las',
+    icon: 'pi pi-chart-bar',
+    label: 'LAS',
+    labelKey: 'ui.activity.las',
+    ariaLabel: 'LAS log viewer workspace'
   }
 ];
 
@@ -38,6 +46,7 @@ const utilityActivities = [
 const workspaceComponents = {
   design: DesignWorkspace,
   analysis: AnalysisWorkspace,
+  las: LasWorkspace,
   settings: SettingsWorkspace
 };
 

@@ -3,6 +3,7 @@ import { defineStore } from 'pinia';
 const ACTIVITY_TO_VIEW = Object.freeze({
     design: 'DesignWorkspace',
     analysis: 'AnalysisWorkspace',
+    las: 'LasWorkspace',
     settings: 'SettingsWorkspace'
 });
 
@@ -239,9 +240,11 @@ export const useWorkspaceStore = defineStore('workspace', {
             this.currentActivity = normalized;
             this.activePanelId = normalized === 'analysis'
                 ? 'analysis-overview'
-                : normalized === 'settings'
-                    ? 'settings-general'
-                    : 'workflow';
+                : normalized === 'las'
+                    ? 'las-main'
+                    : normalized === 'settings'
+                        ? 'settings-general'
+                        : 'workflow';
             const viewName = ACTIVITY_TO_VIEW[normalized];
             if (viewName && !this.cachedViews.includes(viewName)) {
                 this.cachedViews = [...this.cachedViews, viewName];

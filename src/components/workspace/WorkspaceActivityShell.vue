@@ -32,6 +32,7 @@ const FLOATING_DOCK_DEFAULT_HEIGHT = 560;
 const activityMeta = Object.freeze({
   design: { label: 'Design', i18nKey: 'ui.activity.design' },
   analysis: { label: 'Analysis', i18nKey: 'ui.activity.analysis' },
+  las: { label: 'LAS', i18nKey: 'ui.activity.las' },
   settings: { label: 'Settings', i18nKey: 'ui.activity.settings' }
 });
 

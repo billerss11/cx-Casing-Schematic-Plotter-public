@@ -19,6 +19,7 @@ import {
 import {
   hasInteractiveSchematicTarget,
   isSameInteractionEntity,
+  normalizePipeType,
   normalizeInteractionEntity,
   resolveTopmostInteractionEntity
 } from '@/composables/useSchematicInteraction.js';
@@ -627,16 +628,6 @@ function hideTooltip() {
 }
 
 const interactionGuard = () => isSelectionEnabled.value;
-
-function normalizePipeType(pipeType) {
-  const normalized = String(pipeType ?? '').trim().toLowerCase();
-  if (normalized === 'casing') return 'casing';
-  if (normalized === 'tubing') return 'tubing';
-  if (normalized === 'drillstring' || normalized === 'drill-string' || normalized === 'drill_string') {
-    return 'drillString';
-  }
-  return null;
-}
 
 function normalizePipeEntity(entity) {
   if (!entity || typeof entity !== 'object') return null;

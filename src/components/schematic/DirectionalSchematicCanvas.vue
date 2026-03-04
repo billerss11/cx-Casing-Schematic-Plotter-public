@@ -17,6 +17,7 @@ import { useViewConfigStore } from '@/stores/viewConfigStore.js';
 import {
   hasInteractiveSchematicTarget,
   isSameInteractionEntity,
+  normalizePipeType,
   normalizeInteractionEntity,
   resolveTopmostInteractionEntity
 } from '@/composables/useSchematicInteraction.js';
@@ -1040,16 +1041,6 @@ function hideTooltip() {
   tooltipVisible.value = false;
   tooltipModel.value = null;
   lastTooltipHoverAt = 0;
-}
-
-function normalizePipeType(pipeType) {
-  const normalized = String(pipeType ?? '').trim().toLowerCase();
-  if (normalized === 'casing') return 'casing';
-  if (normalized === 'tubing') return 'tubing';
-  if (normalized === 'drillstring' || normalized === 'drill-string' || normalized === 'drill_string') {
-    return 'drillString';
-  }
-  return null;
 }
 
 function normalizePipeEntity(entity) {
