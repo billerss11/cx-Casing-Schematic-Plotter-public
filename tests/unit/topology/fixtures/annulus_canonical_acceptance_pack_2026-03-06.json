@@ -1,0 +1,483 @@
+{
+  "projectSchemaVersion": "3.0",
+  "projectName": "Annulus Canonical Acceptance Pack",
+  "projectAuthor": "Codex",
+  "activeWellId": "well-no-tubing",
+  "projectConfig": {
+    "defaultUnits": "ft"
+  },
+  "wells": [
+    {
+      "id": "well-no-tubing",
+      "name": "1 No Tubing ANNULUS_A",
+      "data": {
+        "casingData": [
+          {
+            "label": "Outer Casing",
+            "od": 9.625,
+            "weight": 40,
+            "idOverride": null,
+            "manualHoleSize": null,
+            "linerMode": "Auto",
+            "manualParent": null,
+            "grade": "L80",
+            "top": 0,
+            "bottom": 5000,
+            "toc": null,
+            "boc": null,
+            "showTop": true,
+            "showBottom": true,
+            "rowId": "casing-no-tbg-outer",
+            "componentType": "pipe"
+          },
+          {
+            "label": "Inner Casing",
+            "od": 7,
+            "weight": 40,
+            "idOverride": null,
+            "manualHoleSize": null,
+            "linerMode": "Auto",
+            "manualParent": null,
+            "grade": "L80",
+            "top": 0,
+            "bottom": 5000,
+            "toc": null,
+            "boc": null,
+            "showTop": true,
+            "showBottom": true,
+            "rowId": "casing-no-tbg-inner",
+            "componentType": "pipe"
+          }
+        ],
+        "tubingData": [],
+        "drillStringData": [],
+        "equipmentData": [],
+        "horizontalLines": [],
+        "annotationBoxes": [],
+        "userAnnotations": [],
+        "cementPlugs": [],
+        "annulusFluids": [],
+        "markers": [],
+        "topologySources": [
+          {
+            "top": 4500,
+            "bottom": 4500,
+            "sourceType": "formation_inflow",
+            "volumeKey": "ANNULUS_A",
+            "fromVolumeKey": null,
+            "toVolumeKey": null,
+            "label": "ANNULUS_A valid depth",
+            "show": true,
+            "rowId": "src-no-tbg-annulus-a"
+          }
+        ],
+        "trajectory": []
+      },
+      "config": {
+        "operationPhase": "production",
+        "viewMode": "vertical",
+        "showPhysicsDebug": true,
+        "topologyUseOpenHoleSource": false,
+        "xExaggeration": 1,
+        "verticalSectionMode": "auto",
+        "verticalSectionAzimuth": 0
+      }
+    },
+    {
+      "id": "well-with-tubing-ab",
+      "name": "2 With Tubing ANNULUS_A_B",
+      "data": {
+        "casingData": [
+          {
+            "label": "Outer Casing",
+            "od": 9.625,
+            "weight": 40,
+            "idOverride": null,
+            "manualHoleSize": null,
+            "linerMode": "Auto",
+            "manualParent": null,
+            "grade": "L80",
+            "top": 0,
+            "bottom": 5000,
+            "toc": null,
+            "boc": null,
+            "showTop": true,
+            "showBottom": true,
+            "rowId": "casing-with-tbg-outer",
+            "componentType": "pipe"
+          },
+          {
+            "label": "Inner Casing",
+            "od": 7,
+            "weight": 40,
+            "idOverride": null,
+            "manualHoleSize": null,
+            "linerMode": "Auto",
+            "manualParent": null,
+            "grade": "L80",
+            "top": 0,
+            "bottom": 5000,
+            "toc": null,
+            "boc": null,
+            "showTop": true,
+            "showBottom": true,
+            "rowId": "casing-with-tbg-inner",
+            "componentType": "pipe"
+          }
+        ],
+        "tubingData": [
+          {
+            "label": "Production Tubing",
+            "od": 4.5,
+            "weight": 12.6,
+            "idOverride": null,
+            "grade": "L80",
+            "top": 1000,
+            "bottom": 2000,
+            "show": true,
+            "rowId": "tbg-ab-1"
+          }
+        ],
+        "drillStringData": [],
+        "equipmentData": [],
+        "horizontalLines": [],
+        "annotationBoxes": [],
+        "userAnnotations": [],
+        "cementPlugs": [],
+        "annulusFluids": [],
+        "markers": [],
+        "topologySources": [
+          {
+            "top": 1500,
+            "bottom": 1500,
+            "sourceType": "formation_inflow",
+            "volumeKey": "ANNULUS_A",
+            "fromVolumeKey": null,
+            "toVolumeKey": null,
+            "label": "ANNULUS_A tubing annulus",
+            "show": true,
+            "rowId": "src-with-tbg-a"
+          },
+          {
+            "top": 1500,
+            "bottom": 1500,
+            "sourceType": "formation_inflow",
+            "volumeKey": "ANNULUS_B",
+            "fromVolumeKey": null,
+            "toVolumeKey": null,
+            "label": "ANNULUS_B casing annulus",
+            "show": true,
+            "rowId": "src-with-tbg-b"
+          }
+        ],
+        "trajectory": []
+      },
+      "config": {
+        "operationPhase": "production",
+        "viewMode": "vertical",
+        "showPhysicsDebug": true,
+        "topologyUseOpenHoleSource": false,
+        "xExaggeration": 1,
+        "verticalSectionMode": "auto",
+        "verticalSectionAzimuth": 0
+      }
+    },
+    {
+      "id": "well-transition-check",
+      "name": "3 Tubing Boundary Transition",
+      "data": {
+        "casingData": [
+          {
+            "label": "Outer Casing",
+            "od": 9.625,
+            "weight": 40,
+            "idOverride": null,
+            "manualHoleSize": null,
+            "linerMode": "Auto",
+            "manualParent": null,
+            "grade": "L80",
+            "top": 0,
+            "bottom": 5000,
+            "toc": null,
+            "boc": null,
+            "showTop": true,
+            "showBottom": true,
+            "rowId": "casing-trans-outer",
+            "componentType": "pipe"
+          },
+          {
+            "label": "Inner Casing",
+            "od": 7,
+            "weight": 40,
+            "idOverride": null,
+            "manualHoleSize": null,
+            "linerMode": "Auto",
+            "manualParent": null,
+            "grade": "L80",
+            "top": 0,
+            "bottom": 5000,
+            "toc": null,
+            "boc": null,
+            "showTop": true,
+            "showBottom": true,
+            "rowId": "casing-trans-inner",
+            "componentType": "pipe"
+          }
+        ],
+        "tubingData": [
+          {
+            "label": "Production Tubing",
+            "od": 4.5,
+            "weight": 12.6,
+            "idOverride": null,
+            "grade": "L80",
+            "top": 1000,
+            "bottom": 2000,
+            "show": true,
+            "rowId": "tbg-trans-1"
+          }
+        ],
+        "drillStringData": [],
+        "equipmentData": [],
+        "horizontalLines": [],
+        "annotationBoxes": [],
+        "userAnnotations": [],
+        "cementPlugs": [],
+        "annulusFluids": [],
+        "markers": [],
+        "topologySources": [
+          {
+            "top": 1500,
+            "bottom": 1500,
+            "sourceType": "formation_inflow",
+            "volumeKey": "ANNULUS_A",
+            "fromVolumeKey": null,
+            "toVolumeKey": null,
+            "label": "Transition probe",
+            "show": true,
+            "rowId": "src-trans-a"
+          }
+        ],
+        "trajectory": []
+      },
+      "config": {
+        "operationPhase": "production",
+        "viewMode": "vertical",
+        "showPhysicsDebug": true,
+        "topologyUseOpenHoleSource": false,
+        "xExaggeration": 1,
+        "verticalSectionMode": "auto",
+        "verticalSectionAzimuth": 0
+      }
+    },
+    {
+      "id": "well-packer-mapping",
+      "name": "4 Tubing Packer Seal Mapping",
+      "data": {
+        "casingData": [
+          {
+            "label": "Outer Casing",
+            "od": 9.625,
+            "weight": 40,
+            "idOverride": 8.5,
+            "manualHoleSize": null,
+            "linerMode": "Auto",
+            "manualParent": null,
+            "grade": "L80",
+            "top": 0,
+            "bottom": 5000,
+            "toc": null,
+            "boc": null,
+            "showTop": true,
+            "showBottom": true,
+            "rowId": "casing-pack-outer",
+            "componentType": "pipe"
+          },
+          {
+            "label": "Inner Casing",
+            "od": 7,
+            "weight": 40,
+            "idOverride": 6.2,
+            "manualHoleSize": null,
+            "linerMode": "Auto",
+            "manualParent": null,
+            "grade": "L80",
+            "top": 0,
+            "bottom": 5000,
+            "toc": null,
+            "boc": null,
+            "showTop": true,
+            "showBottom": true,
+            "rowId": "casing-pack-inner",
+            "componentType": "pipe"
+          }
+        ],
+        "tubingData": [
+          {
+            "label": "Production Tubing",
+            "od": 4.5,
+            "weight": 12.6,
+            "innerDiameter": 4,
+            "idOverride": null,
+            "grade": "L80",
+            "top": 1000,
+            "bottom": 2000,
+            "show": true,
+            "rowId": "tbg-pack-1"
+          }
+        ],
+        "drillStringData": [],
+        "equipmentData": [
+          {
+            "depth": 2000,
+            "type": "Packer",
+            "attachToHostType": "tubing",
+            "attachToId": "tbg-pack-1",
+            "label": "Tubing packer",
+            "show": true,
+            "rowId": "eq-pack-1"
+          }
+        ],
+        "horizontalLines": [],
+        "annotationBoxes": [],
+        "userAnnotations": [],
+        "cementPlugs": [],
+        "annulusFluids": [],
+        "markers": [],
+        "topologySources": [
+          {
+            "top": 1500,
+            "bottom": 1500,
+            "sourceType": "formation_inflow",
+            "volumeKey": "ANNULUS_A",
+            "fromVolumeKey": null,
+            "toVolumeKey": null,
+            "label": "ANNULUS_A packer case",
+            "show": true,
+            "rowId": "src-pack-a"
+          }
+        ],
+        "trajectory": []
+      },
+      "config": {
+        "operationPhase": "production",
+        "viewMode": "vertical",
+        "showPhysicsDebug": true,
+        "topologyUseOpenHoleSource": false,
+        "xExaggeration": 1,
+        "verticalSectionMode": "auto",
+        "verticalSectionAzimuth": 0
+      }
+    },
+    {
+      "id": "well-directional-parity",
+      "name": "5 Directional Parity",
+      "data": {
+        "casingData": [
+          {
+            "label": "Outer Casing",
+            "od": 9.625,
+            "weight": 40,
+            "idOverride": null,
+            "manualHoleSize": null,
+            "linerMode": "Auto",
+            "manualParent": null,
+            "grade": "L80",
+            "top": 0,
+            "bottom": 5000,
+            "toc": null,
+            "boc": null,
+            "showTop": true,
+            "showBottom": true,
+            "rowId": "casing-dir-outer",
+            "componentType": "pipe"
+          },
+          {
+            "label": "Inner Casing",
+            "od": 7,
+            "weight": 40,
+            "idOverride": null,
+            "manualHoleSize": null,
+            "linerMode": "Auto",
+            "manualParent": null,
+            "grade": "L80",
+            "top": 0,
+            "bottom": 5000,
+            "toc": null,
+            "boc": null,
+            "showTop": true,
+            "showBottom": true,
+            "rowId": "casing-dir-inner",
+            "componentType": "pipe"
+          }
+        ],
+        "tubingData": [
+          {
+            "label": "Production Tubing",
+            "od": 4.5,
+            "weight": 12.6,
+            "idOverride": null,
+            "grade": "L80",
+            "top": 1000,
+            "bottom": 2000,
+            "show": true,
+            "rowId": "tbg-dir-1"
+          }
+        ],
+        "drillStringData": [],
+        "equipmentData": [],
+        "horizontalLines": [],
+        "annotationBoxes": [],
+        "userAnnotations": [],
+        "cementPlugs": [],
+        "annulusFluids": [],
+        "markers": [],
+        "topologySources": [
+          {
+            "top": 1500,
+            "bottom": 1500,
+            "sourceType": "formation_inflow",
+            "volumeKey": "ANNULUS_A",
+            "fromVolumeKey": null,
+            "toVolumeKey": null,
+            "label": "ANNULUS_A directional",
+            "show": true,
+            "rowId": "src-dir-a"
+          },
+          {
+            "top": 1500,
+            "bottom": 1500,
+            "sourceType": "formation_inflow",
+            "volumeKey": "ANNULUS_B",
+            "fromVolumeKey": null,
+            "toVolumeKey": null,
+            "label": "ANNULUS_B directional",
+            "show": true,
+            "rowId": "src-dir-b"
+          }
+        ],
+        "trajectory": [
+          { "md": 0, "inc": 0, "azi": 0 },
+          { "md": 2000, "inc": 10, "azi": 25 },
+          { "md": 3500, "inc": 25, "azi": 55 },
+          { "md": 5000, "inc": 35, "azi": 75 }
+        ]
+      },
+      "config": {
+        "operationPhase": "production",
+        "viewMode": "directional",
+        "showPhysicsDebug": true,
+        "topologyUseOpenHoleSource": false,
+        "xExaggeration": 1,
+        "verticalSectionMode": "auto",
+        "verticalSectionAzimuth": 0
+      }
+    }
+  ],
+  "meta": {
+    "schemaVersion": "3.0",
+    "timestamp": "2026-03-06T11:08:00.000Z",
+    "source": "CasingSchematicPlotter",
+    "author": "Codex"
+  }
+}

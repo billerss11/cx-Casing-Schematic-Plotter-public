@@ -10,7 +10,6 @@ import {
     NODE_KIND_BORE,
     NODE_KIND_FORMATION_ANNULUS,
     NODE_KIND_SURFACE,
-    NODE_KIND_TUBING_ANNULUS,
     TOPOLOGY_EPSILON
 } from '@/topology/topologyTypes.js';
 
@@ -47,9 +46,38 @@ function shouldAllowFormationRepresentationForAnnulusKind(kind) {
     return modeledSlot?.allowFormationRepresentation === true;
 }
 
+function normalizePipeType(value) {
+    const token = String(value ?? '').trim().toLowerCase();
+    return token || null;
+}
+
+function resolvePipeRowId(pipeLayer = null) {
+    if (!pipeLayer || typeof pipeLayer !== 'object') return null;
+    const explicitRowId = String(pipeLayer?.rowId ?? '').trim();
+    if (explicitRowId) return explicitRowId;
+
+    const explicitId = String(pipeLayer?.id ?? '').trim();
+    if (explicitId) return explicitId;
+
+    const fallbackRefId = String(pipeLayer?.refId ?? '').trim();
+    if (fallbackRefId) return fallbackRefId;
+
+    return null;
+}
+
+function createAnnulusChannelIdentityMeta(annulusLayer = {}) {
+    return {
+        innerPipeType: normalizePipeType(annulusLayer?.innerPipe?.pipeType),
+        innerPipeRowId: resolvePipeRowId(annulusLayer?.innerPipe ?? null),
+        outerPipeType: normalizePipeType(annulusLayer?.outerPipe?.pipeType),
+        outerPipeRowId: resolvePipeRowId(annulusLayer?.outerPipe ?? null)
+    };
+}
+
 function createAnnulusNode(kind, top, bottom, annulusLayer) {
     const material = String(annulusLayer?.material ?? '').trim().toLowerCase();
     const annulusBlocked = material === 'cement' || material === 'plug';
+    const channelIdentity = createAnnulusChannelIdentityMeta(annulusLayer);
     return {
         nodeId: createNodeId(kind, top, bottom),
         kind,
@@ -59,7 +87,8 @@ function createAnnulusNode(kind, top, bottom, annulusLayer) {
         meta: {
             isBlocked: annulusBlocked,
             material,
-            annulusIndex: resolveAnnulusSlotIndex(annulusLayer)
+            annulusIndex: resolveAnnulusSlotIndex(annulusLayer),
+            ...channelIdentity
         }
     };
 }
@@ -118,16 +147,12 @@ function createVolumeNodesForInterval(interval, stack = []) {
         });
     }
 
-    const modeledAnnulusKinds = [
-        NODE_KIND_TUBING_ANNULUS,
-        ...MODELED_ANNULUS_VOLUME_SLOTS.map((slot) => slot.kind)
-    ];
+    const modeledAnnulusKinds = MODELED_ANNULUS_VOLUME_SLOTS.map((slot) => slot.kind);
 
     modeledAnnulusKinds.forEach((kind) => {
         const annulusLayer = resolveAnnulusLayerForVolumeKind(stack, kind);
         if (!annulusLayer) return;
         if (annulusLayer?.isFormation === true) {
-            if (kind === NODE_KIND_TUBING_ANNULUS) return;
             if (!shouldAllowFormationRepresentationForAnnulusKind(kind)) return;
         }
         nodes.push(createAnnulusNode(kind, top, bottom, annulusLayer));

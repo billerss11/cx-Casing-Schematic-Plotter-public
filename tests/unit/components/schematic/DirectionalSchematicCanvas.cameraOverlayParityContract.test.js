@@ -15,8 +15,9 @@ describe('DirectionalSchematicCanvas camera overlay parity contract', () => {
     expect(source).toContain('const nearestMD = Number(resolveNearestMDFromPointer(pointer));');
     expect(source).toContain('const crossSectionDepthInteraction = useCrossSectionDepthInteraction({');
     expect(source).toContain('resolveDepthFromClient: resolveCrossSectionDepthFromClient,');
-    expect(source).toContain('resolvePointerFromClient: ({ localPointer }) => (');
-    expect(source).toContain('invertCameraPoint(localPointer, directionalCameraState.value) ?? localPointer');
+    expect(source).toContain('resolvePointerFromClient: ({ clientX, clientY, localPointer }) => (');
+    expect(source).toContain('pointerMapping.resolvePointer({ clientX, clientY })?.canonicalPoint ??');
+    expect(source).toContain('invertCameraPoint(localPointer, directionalCameraState.value) ??');
     expect(source).toContain('function resolveFluidTooltipMeta({ index, event }) {');
     expect(source).toContain('const depth = Number(resolveNearestMDFromPointer(pointer));');
   });

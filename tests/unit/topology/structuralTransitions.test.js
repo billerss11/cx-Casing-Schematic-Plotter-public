@@ -38,7 +38,7 @@ describe('structuralTransitions', () => {
     ]);
   });
 
-  it('resolves tubing-annulus entry transition definitions at tubing top boundaries', () => {
+  it('resolves ANNULUS_A -> ANNULUS_B annulus-family entry transition definitions at tubing top boundaries', () => {
     const intervalNodeByKind = createIntervalNodeByKind([
       {
         intervalIndex: 0,
@@ -47,8 +47,13 @@ describe('structuralTransitions', () => {
       },
       {
         intervalIndex: 1,
-        kind: 'TUBING_ANNULUS',
-        nodeId: 'node:TUBING_ANNULUS:1'
+        kind: 'ANNULUS_A',
+        nodeId: 'node:ANNULUS_A:1'
+      },
+      {
+        intervalIndex: 1,
+        kind: 'ANNULUS_B',
+        nodeId: 'node:ANNULUS_B:1'
       }
     ]);
 
@@ -58,22 +63,26 @@ describe('structuralTransitions', () => {
       intervalNodeByKind
     });
 
-    expect(definitions).toHaveLength(1);
-    expect(definitions[0]).toMatchObject({
-      ruleId: 'tubing-annulus-transition',
-      transitionType: 'tubing_annulus_entry',
-      primaryVolumeKind: 'TUBING_ANNULUS'
-    });
-    expect(definitions[0].fromNode.kind).toBe('ANNULUS_A');
-    expect(definitions[0].toNode.kind).toBe('TUBING_ANNULUS');
+    const entryDefinition = definitions.find((definition) => (
+      definition?.ruleId === 'annulus-family-transition'
+      && definition?.transitionType === 'annulus_family_shift_entry'
+      && definition?.fromNode?.kind === 'ANNULUS_A'
+      && definition?.toNode?.kind === 'ANNULUS_B'
+    ));
+    expect(entryDefinition).toBeDefined();
   });
 
-  it('resolves tubing-annulus exit transition definitions at tubing bottom boundaries', () => {
+  it('resolves ANNULUS_B -> ANNULUS_A annulus-family exit transition definitions at tubing bottom boundaries', () => {
     const intervalNodeByKind = createIntervalNodeByKind([
       {
         intervalIndex: 3,
-        kind: 'TUBING_ANNULUS',
-        nodeId: 'node:TUBING_ANNULUS:3'
+        kind: 'ANNULUS_A',
+        nodeId: 'node:ANNULUS_A:3'
+      },
+      {
+        intervalIndex: 3,
+        kind: 'ANNULUS_B',
+        nodeId: 'node:ANNULUS_B:3'
       },
       {
         intervalIndex: 4,
@@ -88,14 +97,13 @@ describe('structuralTransitions', () => {
       intervalNodeByKind
     });
 
-    expect(definitions).toHaveLength(1);
-    expect(definitions[0]).toMatchObject({
-      ruleId: 'tubing-annulus-transition',
-      transitionType: 'tubing_annulus_exit',
-      primaryVolumeKind: 'TUBING_ANNULUS'
-    });
-    expect(definitions[0].fromNode.kind).toBe('TUBING_ANNULUS');
-    expect(definitions[0].toNode.kind).toBe('ANNULUS_A');
+    const exitDefinition = definitions.find((definition) => (
+      definition?.ruleId === 'annulus-family-transition'
+      && definition?.transitionType === 'annulus_family_shift_exit'
+      && definition?.fromNode?.kind === 'ANNULUS_B'
+      && definition?.toNode?.kind === 'ANNULUS_A'
+    ));
+    expect(exitDefinition).toBeDefined();
   });
 
   it('resolves tubing-end transfer exit transitions from TUBING_INNER to ANNULUS_A when inner channel shifts out of tubing', () => {
@@ -108,8 +116,8 @@ describe('structuralTransitions', () => {
       },
       {
         intervalIndex: 3,
-        kind: 'TUBING_ANNULUS',
-        nodeId: 'node:TUBING_ANNULUS:3'
+        kind: 'ANNULUS_A',
+        nodeId: 'node:ANNULUS_A:3'
       },
       {
         intervalIndex: 4,
@@ -136,9 +144,8 @@ describe('structuralTransitions', () => {
     ));
     const transferTargets = new Set(transferDefinitions.map((definition) => definition?.toNode?.kind));
 
-    expect(transferDefinitions.length).toBeGreaterThanOrEqual(2);
+    expect(transferDefinitions.length).toBeGreaterThanOrEqual(1);
     expect(transferDefinitions.every((definition) => definition?.fromNode?.kind === 'TUBING_INNER')).toBe(true);
-    expect(transferTargets.has('TUBING_ANNULUS')).toBe(true);
     expect(transferTargets.has('ANNULUS_A')).toBe(true);
   });
 
@@ -156,8 +163,8 @@ describe('structuralTransitions', () => {
       },
       {
         intervalIndex: 0,
-        kind: 'TUBING_ANNULUS',
-        nodeId: 'node:TUBING_ANNULUS:0'
+        kind: 'ANNULUS_A',
+        nodeId: 'node:ANNULUS_A:0'
       },
       {
         intervalIndex: 1,
@@ -789,20 +796,15 @@ describe('structuralTransitions', () => {
         meta: { isBlocked: false }
       },
       toNode: {
-        nodeId: 'node:TUBING_ANNULUS:1',
-        kind: 'TUBING_ANNULUS',
+        nodeId: 'node:ANNULUS_A:1',
+        kind: 'ANNULUS_A',
         meta: { isBlocked: false }
       },
-      equipmentVolumeKinds: ['TUBING_ANNULUS', 'ANNULUS_A']
+      equipmentVolumeKinds: ['ANNULUS_A']
     };
 
     const equipmentBlockedState = resolveStructuralTransitionState(definition, {
       byVolume: {
-        TUBING_ANNULUS: {
-          blocked: false,
-          cost: 0,
-          contributors: [{ rowId: 'eq-tbg', reason: 'observer' }]
-        },
         ANNULUS_A: {
           blocked: true,
           cost: 1,
@@ -815,7 +817,6 @@ describe('structuralTransitions', () => {
     expect(equipmentBlockedState.blockedByEquipment).toBe(true);
     expect(equipmentBlockedState.cost).toBe(1);
     expect(equipmentBlockedState.equipmentContributors).toEqual([
-      { rowId: 'eq-tbg', reason: 'observer' },
       { rowId: 'eq-ann-a', reason: 'sealed' }
     ]);
 

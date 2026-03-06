@@ -4,11 +4,11 @@ import {
     EDGE_KIND_RADIAL,
     EDGE_KIND_TERMINATION,
     EDGE_KIND_VERTICAL,
+    MODELED_CASING_ANNULUS_KINDS,
     MODELED_ANNULUS_VOLUME_SLOTS,
     NODE_KIND_ANNULUS_A,
     NODE_KIND_BORE,
     NODE_KIND_FORMATION_ANNULUS,
-    NODE_KIND_TUBING_ANNULUS,
     TOPOLOGY_EPSILON,
     TOPOLOGY_VOLUME_KINDS,
     SOURCE_KIND_LEAK,
@@ -70,6 +70,45 @@ function resolveBoundaryEquipmentEffectByVolumeKind(volumeKind, equipmentEffects
         ? equipmentEffects.byVolume
         : {};
     return byVolume[volumeKind] ?? null;
+}
+
+const ANNULUS_CONTINUITY_IDENTITY_KEYS = Object.freeze([
+    'innerPipeType',
+    'innerPipeRowId',
+    'outerPipeType',
+    'outerPipeRowId'
+]);
+
+const ANNULUS_VERTICAL_CONTINUITY_KIND_SET = new Set([
+    ...MODELED_CASING_ANNULUS_KINDS,
+    NODE_KIND_FORMATION_ANNULUS
+]);
+
+function normalizeIdentityToken(value) {
+    const token = String(value ?? '').trim().toLowerCase();
+    return token || null;
+}
+
+function resolveAnnulusChannelIdentity(node = {}) {
+    const meta = node?.meta && typeof node.meta === 'object' ? node.meta : {};
+    return {
+        innerPipeType: normalizeIdentityToken(meta.innerPipeType),
+        innerPipeRowId: normalizeIdentityToken(meta.innerPipeRowId),
+        outerPipeType: normalizeIdentityToken(meta.outerPipeType),
+        outerPipeRowId: normalizeIdentityToken(meta.outerPipeRowId)
+    };
+}
+
+function shouldGateAnnulusVerticalContinuity(kind) {
+    return ANNULUS_VERTICAL_CONTINUITY_KIND_SET.has(kind);
+}
+
+function isAnnulusChannelIdentityContinuous(fromNode = {}, toNode = {}) {
+    const fromIdentity = resolveAnnulusChannelIdentity(fromNode);
+    const toIdentity = resolveAnnulusChannelIdentity(toNode);
+    return ANNULUS_CONTINUITY_IDENTITY_KEYS.every((key) => (
+        fromIdentity[key] === toIdentity[key]
+    ));
 }
 
 function createStructuralTransitionWarning(definition, boundaryDepth) {
@@ -178,6 +217,12 @@ export function buildVerticalEdges(intervals, intervalNodeByKind, equipmentRows 
             const fromNode = intervalNodeByKind.get(`${currentInterval.intervalIndex}|${kind}`) ?? null;
             const toNode = intervalNodeByKind.get(`${nextInterval.intervalIndex}|${kind}`) ?? null;
             if (!fromNode || !toNode) return;
+            if (
+                shouldGateAnnulusVerticalContinuity(kind)
+                && !isAnnulusChannelIdentityContinuous(fromNode, toNode)
+            ) {
+                return;
+            }
 
             const blockedByMaterial = fromNode?.meta?.isBlocked === true || toNode?.meta?.isBlocked === true;
             const equipmentEffect = resolveBoundaryEquipmentEffectByVolumeKind(kind, equipmentEffects);
@@ -352,25 +397,28 @@ function resolveVolumeKindForCasingBoundarySlot(slotIndex) {
     return null;
 }
 
-function createDefaultRadialVolumePair(intervalNodeByKind, interval) {
-    const tubingAnnulusNode = resolveIntervalNodeByVolumeKind(
+function resolveFirstResolvableAnnulusVolumeKind(intervalNodeByKind, interval) {
+    for (const slot of MODELED_ANNULUS_VOLUME_SLOTS) {
+        const node = resolveIntervalNodeByVolumeKind(intervalNodeByKind, interval, slot.kind);
+        if (node) return slot.kind;
+    }
+
+    const formationNode = resolveIntervalNodeByVolumeKind(
         intervalNodeByKind,
         interval,
-        NODE_KIND_TUBING_ANNULUS
+        NODE_KIND_FORMATION_ANNULUS
     );
-    if (tubingAnnulusNode) {
-        return {
-            innerVolumeKind: NODE_KIND_BORE,
-            outerVolumeKind: NODE_KIND_TUBING_ANNULUS,
-            pairSource: 'default_tubing_inner_tubing_annulus',
-            hostCasingIndex: null
-        };
-    }
+    return formationNode ? NODE_KIND_FORMATION_ANNULUS : null;
+}
+
+function createDefaultRadialVolumePair(intervalNodeByKind, interval) {
+    const firstResolvableAnnulusKind = resolveFirstResolvableAnnulusVolumeKind(intervalNodeByKind, interval);
+    if (!firstResolvableAnnulusKind) return null;
 
     return {
         innerVolumeKind: NODE_KIND_BORE,
-        outerVolumeKind: NODE_KIND_ANNULUS_A,
-        pairSource: 'default_bore_annulus_a',
+        outerVolumeKind: firstResolvableAnnulusKind,
+        pairSource: 'default_bore_first_resolvable_annulus',
         hostCasingIndex: null
     };
 }
@@ -389,15 +437,19 @@ function resolveCasingHostRadialVolumePair(interval, resolvedHost, pipeReference
     }
     if (hostCasingIndex < 0) return null;
 
-    const tubingAnnulusNode = resolveIntervalNodeByVolumeKind(
+    const annulusANode = resolveIntervalNodeByVolumeKind(
         intervalNodeByKind,
         interval,
-        NODE_KIND_TUBING_ANNULUS
+        NODE_KIND_ANNULUS_A
     );
-    const innerVolumeKind = hostCasingIndex === 0
-        ? (tubingAnnulusNode ? NODE_KIND_TUBING_ANNULUS : NODE_KIND_BORE)
-        : resolveVolumeKindForCasingBoundarySlot(hostCasingIndex - 1);
-    const outerVolumeKind = resolveVolumeKindForCasingBoundarySlot(hostCasingIndex);
+    const tubingPresentAtInterval = String(annulusANode?.meta?.innerPipeType ?? '').trim().toLowerCase() === 'tubing';
+    const annulusShift = tubingPresentAtInterval ? 1 : 0;
+    const outerBoundarySlotIndex = hostCasingIndex + annulusShift;
+    const innerBoundarySlotIndex = outerBoundarySlotIndex - 1;
+    const innerVolumeKind = innerBoundarySlotIndex < 0
+        ? NODE_KIND_BORE
+        : resolveVolumeKindForCasingBoundarySlot(innerBoundarySlotIndex);
+    const outerVolumeKind = resolveVolumeKindForCasingBoundarySlot(outerBoundarySlotIndex);
     if (!innerVolumeKind || !outerVolumeKind || innerVolumeKind === outerVolumeKind) {
         return null;
     }
@@ -510,6 +562,7 @@ export function buildRadialEdges(stateSnapshot, intervals, intervalNodeByKind, p
             let radialVolumePair = tubingHostLeak
                 ? fallbackVolumePair
                 : (casingHostVolumePair ?? fallbackVolumePair);
+            if (!radialVolumePair) return;
             let innerNode = intervalNodeByKind.get(
                 `${interval.intervalIndex}|${radialVolumePair.innerVolumeKind}`
             ) ?? null;
@@ -518,6 +571,7 @@ export function buildRadialEdges(stateSnapshot, intervals, intervalNodeByKind, p
             ) ?? null;
             if ((!innerNode || !outerNode) && !tubingHostLeak) {
                 radialVolumePair = fallbackVolumePair;
+                if (!radialVolumePair) return;
                 innerNode = intervalNodeByKind.get(
                     `${interval.intervalIndex}|${radialVolumePair.innerVolumeKind}`
                 ) ?? null;

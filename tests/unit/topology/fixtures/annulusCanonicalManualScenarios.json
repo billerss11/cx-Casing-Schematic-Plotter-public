@@ -1,0 +1,385 @@
+{
+  "description": "Manual acceptance scenarios for canonical first-annulus behavior",
+  "generatedOn": "2026-03-06",
+  "cases": [
+    {
+      "id": "no_tubing_annulus_a_valid_depth",
+      "title": "No tubing: ANNULUS_A source resolves at valid depth",
+      "input": {
+        "casingData": [
+          {
+            "rowId": "csg-outer",
+            "label": "Outer Casing",
+            "od": 9.625,
+            "weight": 40,
+            "top": 0,
+            "bottom": 5000,
+            "show": true
+          },
+          {
+            "rowId": "csg-inner",
+            "label": "Inner Casing",
+            "od": 7,
+            "weight": 40,
+            "top": 0,
+            "bottom": 5000,
+            "show": true
+          }
+        ],
+        "tubingData": [],
+        "drillStringData": [],
+        "equipmentData": [],
+        "horizontalLines": [],
+        "annotationBoxes": [],
+        "userAnnotations": [],
+        "cementPlugs": [],
+        "annulusFluids": [],
+        "markers": [],
+        "topologySources": [
+          {
+            "rowId": "src-no-tubing-a",
+            "sourceType": "formation_inflow",
+            "volumeKey": "ANNULUS_A",
+            "top": 4500,
+            "bottom": 4500,
+            "show": true
+          }
+        ],
+        "trajectory": [],
+        "config": {
+          "operationPhase": "production"
+        },
+        "interaction": {}
+      },
+      "expected": {
+        "resolvedSourceRowIds": ["src-no-tubing-a"],
+        "warningsAbsent": [
+          "scenario_source_no_resolvable_interval",
+          "scenario_rows_with_no_resolved_nodes"
+        ],
+        "nodeKindsInclude": ["ANNULUS_A"],
+        "nodeKindsExclude": ["TUBING_ANNULUS"]
+      }
+    },
+    {
+      "id": "with_tubing_annulus_a_b_mapping",
+      "title": "With tubing: ANNULUS_A and ANNULUS_B map to expected channels",
+      "input": {
+        "casingData": [
+          {
+            "rowId": "csg-outer",
+            "label": "Outer Casing",
+            "od": 9.625,
+            "weight": 40,
+            "top": 0,
+            "bottom": 5000,
+            "show": true
+          },
+          {
+            "rowId": "csg-inner",
+            "label": "Inner Casing",
+            "od": 7,
+            "weight": 40,
+            "top": 0,
+            "bottom": 5000,
+            "show": true
+          }
+        ],
+        "tubingData": [
+          {
+            "rowId": "tbg-1",
+            "label": "Production Tubing",
+            "od": 4.5,
+            "weight": 12.6,
+            "top": 1000,
+            "bottom": 2000,
+            "show": true
+          }
+        ],
+        "drillStringData": [],
+        "equipmentData": [],
+        "horizontalLines": [],
+        "annotationBoxes": [],
+        "userAnnotations": [],
+        "cementPlugs": [],
+        "annulusFluids": [],
+        "markers": [],
+        "topologySources": [
+          {
+            "rowId": "src-with-tubing-a",
+            "sourceType": "formation_inflow",
+            "volumeKey": "ANNULUS_A",
+            "top": 1500,
+            "bottom": 1500,
+            "show": true
+          },
+          {
+            "rowId": "src-with-tubing-b",
+            "sourceType": "formation_inflow",
+            "volumeKey": "ANNULUS_B",
+            "top": 1500,
+            "bottom": 1500,
+            "show": true
+          }
+        ],
+        "trajectory": [],
+        "config": {
+          "operationPhase": "production"
+        },
+        "interaction": {}
+      },
+      "expected": {
+        "resolvedSourceRowIds": ["src-with-tubing-a", "src-with-tubing-b"],
+        "sourceChannelAssertions": [
+          {
+            "rowId": "src-with-tubing-a",
+            "expectedKind": "ANNULUS_A",
+            "expectedInnerPipeType": "tubing"
+          },
+          {
+            "rowId": "src-with-tubing-b",
+            "expectedKind": "ANNULUS_B",
+            "expectedInnerPipeType": "casing"
+          }
+        ],
+        "warningsAbsent": [
+          "scenario_source_no_resolvable_interval",
+          "scenario_rows_with_no_resolved_nodes"
+        ]
+      }
+    },
+    {
+      "id": "tubing_boundary_transitions",
+      "title": "Tubing boundaries emit canonical ANNULUS_A <-> ANNULUS_B shift",
+      "input": {
+        "casingData": [
+          {
+            "rowId": "csg-outer",
+            "label": "Outer Casing",
+            "od": 9.625,
+            "weight": 40,
+            "top": 0,
+            "bottom": 5000,
+            "show": true
+          },
+          {
+            "rowId": "csg-inner",
+            "label": "Inner Casing",
+            "od": 7,
+            "weight": 40,
+            "top": 0,
+            "bottom": 5000,
+            "show": true
+          }
+        ],
+        "tubingData": [
+          {
+            "rowId": "tbg-1",
+            "label": "Production Tubing",
+            "od": 4.5,
+            "weight": 12.6,
+            "top": 1000,
+            "bottom": 2000,
+            "show": true
+          }
+        ],
+        "drillStringData": [],
+        "equipmentData": [],
+        "horizontalLines": [],
+        "annotationBoxes": [],
+        "userAnnotations": [],
+        "cementPlugs": [],
+        "annulusFluids": [],
+        "markers": [],
+        "topologySources": [
+          {
+            "rowId": "src-transition-a",
+            "sourceType": "formation_inflow",
+            "volumeKey": "ANNULUS_A",
+            "top": 1500,
+            "bottom": 1500,
+            "show": true
+          }
+        ],
+        "trajectory": [],
+        "config": {
+          "operationPhase": "production"
+        },
+        "interaction": {}
+      },
+      "expected": {
+        "requiredTransitionPairs": [
+          "ANNULUS_A->ANNULUS_B",
+          "ANNULUS_B->ANNULUS_A"
+        ],
+        "nodeKindsExclude": ["TUBING_ANNULUS"],
+        "graphLaneKindsExclude": ["TUBING_ANNULUS"],
+        "graphLaneLabelExcludes": ["TUBING_ANNULUS"]
+      }
+    },
+    {
+      "id": "tubing_host_packer_maps_to_annulus_a",
+      "title": "Tubing-host packer seal mapping resolves to ANNULUS_A",
+      "input": {
+        "casingData": [
+          {
+            "rowId": "csg-outer",
+            "label": "Outer Casing",
+            "od": 9.625,
+            "weight": 40,
+            "idOverride": 8.5,
+            "top": 0,
+            "bottom": 5000,
+            "show": true
+          },
+          {
+            "rowId": "csg-inner",
+            "label": "Inner Casing",
+            "od": 7,
+            "weight": 40,
+            "idOverride": 6.2,
+            "top": 0,
+            "bottom": 5000,
+            "show": true
+          }
+        ],
+        "tubingData": [
+          {
+            "rowId": "tbg-1",
+            "label": "Production Tubing",
+            "od": 4.5,
+            "innerDiameter": 4.0,
+            "weight": 12.6,
+            "top": 1000,
+            "bottom": 2000,
+            "show": true
+          }
+        ],
+        "drillStringData": [],
+        "equipmentData": [
+          {
+            "rowId": "eq-tbg-packer",
+            "type": "Packer",
+            "depth": 2000,
+            "attachToHostType": "tubing",
+            "attachToId": "tbg-1",
+            "show": true
+          }
+        ],
+        "horizontalLines": [],
+        "annotationBoxes": [],
+        "userAnnotations": [],
+        "cementPlugs": [],
+        "annulusFluids": [],
+        "markers": [],
+        "topologySources": [
+          {
+            "rowId": "src-eq-a",
+            "sourceType": "formation_inflow",
+            "volumeKey": "ANNULUS_A",
+            "top": 1500,
+            "bottom": 1500,
+            "show": true
+          }
+        ],
+        "trajectory": [],
+        "config": {
+          "operationPhase": "production"
+        },
+        "interaction": {}
+      },
+      "expected": {
+        "equipmentSealByRow": {
+          "eq-tbg-packer": "ANNULUS_A"
+        },
+        "requiredEquipmentFunctionKeys": ["annulus_a_seal"]
+      }
+    },
+    {
+      "id": "directional_parity_tubing_boundary",
+      "title": "Directional overlay parity for tubing boundary canonical semantics",
+      "input": {
+        "casingData": [
+          {
+            "rowId": "csg-outer",
+            "label": "Outer Casing",
+            "od": 9.625,
+            "weight": 40,
+            "top": 0,
+            "bottom": 5000,
+            "show": true
+          },
+          {
+            "rowId": "csg-inner",
+            "label": "Inner Casing",
+            "od": 7,
+            "weight": 40,
+            "top": 0,
+            "bottom": 5000,
+            "show": true
+          }
+        ],
+        "tubingData": [
+          {
+            "rowId": "tbg-1",
+            "label": "Production Tubing",
+            "od": 4.5,
+            "weight": 12.6,
+            "top": 1000,
+            "bottom": 2000,
+            "show": true
+          }
+        ],
+        "drillStringData": [],
+        "equipmentData": [],
+        "horizontalLines": [],
+        "annotationBoxes": [],
+        "userAnnotations": [],
+        "cementPlugs": [],
+        "annulusFluids": [],
+        "markers": [],
+        "topologySources": [
+          {
+            "rowId": "src-dir-a",
+            "sourceType": "formation_inflow",
+            "volumeKey": "ANNULUS_A",
+            "top": 1500,
+            "bottom": 1500,
+            "show": true
+          },
+          {
+            "rowId": "src-dir-b",
+            "sourceType": "formation_inflow",
+            "volumeKey": "ANNULUS_B",
+            "top": 1500,
+            "bottom": 1500,
+            "show": true
+          }
+        ],
+        "trajectory": [
+          { "md": 0, "inc": 0, "azi": 0 },
+          { "md": 2000, "inc": 10, "azi": 25 },
+          { "md": 3500, "inc": 25, "azi": 55 },
+          { "md": 5000, "inc": 35, "azi": 75 }
+        ],
+        "config": {
+          "operationPhase": "production",
+          "units": "ft"
+        },
+        "interaction": {}
+      },
+      "expected": {
+        "requiredTransitionPairs": [
+          "ANNULUS_A->ANNULUS_B",
+          "ANNULUS_B->ANNULUS_A"
+        ],
+        "nodeKindsInclude": ["ANNULUS_A", "ANNULUS_B"],
+        "nodeKindsExclude": ["TUBING_ANNULUS"],
+        "directionalOverlay": {
+          "minEntryCount": 1,
+          "nodeKindsExclude": ["TUBING_ANNULUS"]
+        }
+      }
+    }
+  ]
+}

@@ -713,8 +713,10 @@ const depthCursor = useDepthCursorOverlay({
   plotTopY,
   plotBottomY,
   restrictXToPlot: false,
-  resolvePointerFromClient: ({ localPointer }) => (
-    invertCameraPoint(localPointer, directionalCameraState.value) ?? localPointer
+  resolvePointerFromClient: ({ clientX, clientY, localPointer }) => (
+    pointerMapping.resolvePointer({ clientX, clientY })?.canonicalPoint ??
+    invertCameraPoint(localPointer, directionalCameraState.value) ??
+    localPointer
   ),
   resolveDepth: (pointer) => {
     const tvd = Number(yScale.value.invert(pointer?.y));
@@ -1214,7 +1216,7 @@ function handleCanvasPointerUp(event) {
 }
 
 function handleCanvasPointerDown(event) {
-  if (hasInteractiveSchematicTarget(event?.target)) return;
+  if (!isCameraTransformEnabled.value && hasInteractiveSchematicTarget(event?.target)) return;
   startCameraPan(event);
 }
 

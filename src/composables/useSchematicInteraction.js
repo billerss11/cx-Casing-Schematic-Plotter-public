@@ -10,8 +10,33 @@ const SCHEMATIC_INTERACTIVE_TARGETS = [
   '[data-user-annotation-id]'
 ];
 
-const NON_PIPE_ENTITY_TYPES = new Set(['line', 'box', 'marker', 'plug', 'fluid', 'equipment']);
+const NON_PIPE_ENTITY_TYPES = new Set([
+  'line',
+  'box',
+  'marker',
+  'plug',
+  'fluid',
+  'equipment',
+  'topologySource',
+  'topologyBreakout'
+]);
 const PIPE_ENTITY_TYPES = new Set(['casing', 'tubing', 'drillString']);
+const TOPOLOGY_SOURCE_TYPE_ALIASES = new Set([
+  'topologysource',
+  'topology-source',
+  'topology_source',
+  'topologysources',
+  'topology-sources',
+  'topology_sources'
+]);
+const TOPOLOGY_BREAKOUT_TYPE_ALIASES = new Set([
+  'topologybreakout',
+  'topology-breakout',
+  'topology_breakout',
+  'topologybreakouts',
+  'topology-breakouts',
+  'topology_breakouts'
+]);
 const INTERACTION_ENTITY_TYPES = new Set([
   ...Array.from(NON_PIPE_ENTITY_TYPES),
   ...Array.from(PIPE_ENTITY_TYPES)
@@ -51,6 +76,14 @@ export function normalizeInteractionType(value, options = {}) {
 
   if (normalized === 'drillstring' || normalized === 'drill-string' || normalized === 'drill_string') {
     return 'drillString';
+  }
+
+  if (TOPOLOGY_SOURCE_TYPE_ALIASES.has(normalized)) {
+    return 'topologySource';
+  }
+
+  if (TOPOLOGY_BREAKOUT_TYPE_ALIASES.has(normalized)) {
+    return 'topologyBreakout';
   }
 
   if (NON_PIPE_ENTITY_TYPES.has(normalized) || normalized === 'casing' || normalized === 'tubing') {

@@ -894,7 +894,7 @@ function handleCanvasPointerDown(event) {
   if (isTextInputLikeElement(target)) return;
   if (target instanceof Element && target.closest('.user-annotation-layer__editor')) return;
   focusCanvasContainer();
-  if (hasInteractiveSchematicTarget(target)) return;
+  if (!isCameraTransformEnabled.value && hasInteractiveSchematicTarget(target)) return;
   startCameraPan(event);
 }
 
