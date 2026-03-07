@@ -58,6 +58,7 @@ const projectStoreMock = {
   setProjectName: vi.fn(),
   setProjectAuthor: vi.fn(),
   renameWell: vi.fn(() => ({ ok: true })),
+  createBlankProject: vi.fn(() => ({ ok: true, wellId: 'well-blank-1' })),
   createNewWell: vi.fn(() => ({ ok: true })),
   duplicateWell: vi.fn(() => ({ ok: true, name: 'Well 1 Copy' })),
   deleteWell: vi.fn(() => ({ ok: true, deletedWellName: 'Well 1' }))
@@ -164,6 +165,24 @@ function mountWorkspaceActions() {
 describe('WorkspaceProjectActions reset warning', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('shows new project warning dialog and only creates a blank project after confirmation', async () => {
+    const wrapper = mountWorkspaceActions();
+    const newProjectActionButton = wrapper.find('[data-testid="action-ui.project_new"]');
+
+    expect(newProjectActionButton.exists()).toBe(true);
+    await newProjectActionButton.trigger('click');
+
+    expect(projectStoreMock.createBlankProject).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain('ui.project_new_confirm_body');
+
+    const confirmButton = wrapper.findAll('button').find((button) => button.text().includes('ui.confirm'));
+    expect(confirmButton).toBeTruthy();
+    await confirmButton.trigger('click');
+
+    expect(projectStoreMock.createBlankProject).toHaveBeenCalledTimes(1);
+    wrapper.unmount();
   });
 
   it('shows reset warning dialog and only resets after confirmation', async () => {

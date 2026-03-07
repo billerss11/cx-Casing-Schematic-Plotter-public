@@ -9,7 +9,6 @@ import {
   getVisualInspectorFields,
   VISUAL_INSPECTOR_CONTROL_TYPES
 } from './visualInspectorSchema.js';
-import { logLabelScaleDiagnostic } from '@/utils/diagnostics.js';
 
 const ELEMENT_LABEL_KEYS = Object.freeze({
   casing: 'ui.visual_inspector.element.casing',
@@ -34,16 +33,6 @@ const SLIDER_COMMIT_INTERVAL_MS = 24;
 const sliderCommitTimers = new Map();
 const sliderPendingValues = new Map();
 let unsubscribeLanguageChange = null;
-let lastInspectorDiagnosticSignature = null;
-
-const LABEL_SCALE_DIAGNOSTIC_FIELD_SET = new Set([
-  'casingLabelFontSize',
-  'depthLabelFontSize',
-  'depthLabelOffset',
-  'labelFontSize',
-  'manualLabelDepth',
-  'labelXPos'
-]);
 
 const inspectorFields = computed(() => {
   void languageTick.value;
@@ -145,6 +134,8 @@ function clearFormState() {
 
 function resolveContextFieldValue(context, fieldDefinition) {
   const rowValue = resolveValueByPath(context?.rowData ?? null, fieldDefinition.field);
+  if (rowValue !== undefined && rowValue !== null) return rowValue;
+  if (fieldDefinition.defaultValue !== undefined) return fieldDefinition.defaultValue;
   if (rowValue !== undefined) return rowValue;
   return fieldDefinition.defaultValue;
 }
@@ -389,17 +380,6 @@ function patchSelectedField(fieldDefinition, value) {
 
   const currentValue = resolveContextFieldValue(context, fieldDefinition);
   if (Object.is(currentValue, nextValue)) return;
-  if (isLabelScaleDiagnosticField(fieldDefinition)) {
-    logLabelScaleDiagnostic('visual-inspector-patch-field', {
-      elementType: context?.elementType ?? null,
-      storeKey: context?.storeKey ?? null,
-      rowIndex: Number(context?.rowIndex),
-      rowId: String(context?.rowData?.rowId ?? ''),
-      field: fieldDefinition.field,
-      currentValue: currentValue ?? null,
-      nextValue: nextValue ?? null
-    });
-  }
 
   const fieldPathTokens = resolveFieldPathTokens(fieldDefinition.field);
   if (fieldPathTokens.length === 0) return;
@@ -468,77 +448,11 @@ function commitNumberField(fieldDefinition) {
   patchSelectedField(fieldDefinition, getFieldValue(fieldDefinition));
 }
 
-function shouldEmitLabelScaleDiagnosticForContext(context) {
-  const elementType = String(context?.elementType ?? '').trim();
-  return (
-    elementType === 'casing' ||
-    elementType === 'tubing' ||
-    elementType === 'drillString'
-  );
-}
-
-function isLabelScaleDiagnosticField(fieldDefinition) {
-  const fieldToken = String(fieldDefinition?.field ?? '').trim();
-  return LABEL_SCALE_DIAGNOSTIC_FIELD_SET.has(fieldToken);
-}
-
-function buildFieldDiagnosticSnapshot(fieldDefinition) {
-  const controlType = String(fieldDefinition?.controlType ?? '').trim();
-  const sliderConfig = hasSliderControl(fieldDefinition)
-    ? getSliderConfig(fieldDefinition)
-    : null;
-  const formValue = getFieldValue(fieldDefinition);
-  const rowValue = resolveValueByPath(selectedVisualContext.value?.rowData ?? null, fieldDefinition.field);
-
-  const snapshot = {
-    controlType,
-    rowValue: rowValue ?? null,
-    formValue: formValue ?? null,
-    sliderConfig: sliderConfig ?? null
-  };
-
-  if (controlType === VISUAL_INSPECTOR_CONTROL_TYPES.number) {
-    snapshot.numberInputValue = getNumberInputValue(fieldDefinition);
-    snapshot.sliderValue = hasSliderControl(fieldDefinition)
-      ? getSliderValue(fieldDefinition)
-      : null;
-  }
-
-  return snapshot;
-}
-
-function emitInspectorDiagnostics(reason = 'sync') {
-  const context = selectedVisualContext.value;
-  if (!shouldEmitLabelScaleDiagnosticForContext(context)) return;
-
-  const fieldSnapshot = {};
-  inspectorFields.value.forEach((fieldDefinition) => {
-    if (!isLabelScaleDiagnosticField(fieldDefinition)) return;
-    fieldSnapshot[fieldDefinition.field] = buildFieldDiagnosticSnapshot(fieldDefinition);
-  });
-
-  const payload = {
-    reason,
-    elementType: context?.elementType ?? null,
-    storeKey: context?.storeKey ?? null,
-    rowIndex: Number(context?.rowIndex),
-    rowId: String(context?.rowData?.rowId ?? ''),
-    rowLabel: String(context?.rowData?.label ?? ''),
-    fields: fieldSnapshot
-  };
-
-  const signature = JSON.stringify(payload);
-  if (reason === 'sync' && signature === lastInspectorDiagnosticSignature) return;
-  lastInspectorDiagnosticSignature = signature;
-  logLabelScaleDiagnostic('visual-inspector-context', payload);
-}
-
 watch(
   [selectedVisualContext, inspectorFields],
   ([context]) => {
     clearSliderCommitTimers();
     syncFormStateFromContext(context);
-    emitInspectorDiagnostics('sync');
   },
   { immediate: true }
 );

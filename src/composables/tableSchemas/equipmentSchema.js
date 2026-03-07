@@ -2,11 +2,15 @@ import {
   EQUIPMENT_NUMERIC_FIELDS,
   NAMED_COLORS
 } from '@/constants/index.js';
-import { EQUIPMENT_TYPE_OPTIONS } from '@/topology/equipmentMetadata.js';
+import {
+  EQUIPMENT_TYPE_OPTIONS,
+  normalizeEquipmentTypeKey
+} from '@/topology/equipmentMetadata.js';
 import {
   buildEquipmentAttachOptions,
   resolveEquipmentAttachOption
 } from '@/utils/equipmentAttachReference.js';
+import { normalizeEquipmentCompatPayload } from '@/equipment/rowNormalization.js';
 
 function resolveTranslator(t) {
   return typeof t === 'function' ? t : (key) => key;
@@ -28,11 +32,12 @@ export function buildEquipmentTableSchema(domainState, options = {}) {
     prepareData: (rows) => {
       const attachOptions = buildEquipmentAttachOptions(domainState.casingData, domainState.tubingData);
       return rows.map((row) => {
+        const normalizedRow = normalizeEquipmentCompatPayload(row);
         const selectedOption = resolveEquipmentAttachOption(row, attachOptions);
         const attachToDisplay = selectedOption?.value
-          ?? (String(row?.attachToDisplay ?? '').trim() || null);
+          ?? (String(normalizedRow?.attachToDisplay ?? '').trim() || null);
         return {
-          ...row,
+          ...normalizedRow,
           attachToDisplay
         };
       });
@@ -96,12 +101,24 @@ export function buildEquipmentTableSchema(domainState, options = {}) {
     afterChangeIgnoreSources: ['loadData', 'normalize'],
     buildDefaultRow: () => {
       const defaultAttachOption = buildEquipmentAttachOptions(domainState.casingData, domainState.tubingData)[0] ?? null;
+      const defaultType = EQUIPMENT_TYPE_OPTIONS[0] ?? 'Packer';
       return {
         depth: 5000,
-        type: EQUIPMENT_TYPE_OPTIONS[0] ?? 'Packer',
+        type: defaultType,
+        typeKey: normalizeEquipmentTypeKey(defaultType),
+        variantKey: null,
         attachToDisplay: defaultAttachOption?.value ?? null,
         attachToHostType: defaultAttachOption?.hostType ?? null,
         attachToId: defaultAttachOption?.rowId ?? null,
+        state: {
+          actuationState: '',
+          integrityStatus: ''
+        },
+        properties: {
+          boreSeal: '',
+          annularSeal: '',
+          sealByVolume: {}
+        },
         actuationState: '',
         integrityStatus: '',
         boreSeal: '',

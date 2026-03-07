@@ -10,8 +10,12 @@ import {
     PIPE_HOST_TYPE_TUBING,
     resolvePipeHostReference
 } from '@/utils/pipeReference.js';
-import { isPackerEquipmentType, normalizeEquipmentAttachHostType } from '@/utils/equipmentAttachReference.js';
-import { resolveEquipmentTypeLabel } from '@/topology/equipmentDefinitions/index.js';
+import { normalizeEquipmentAttachHostType } from '@/utils/equipmentAttachReference.js';
+import {
+    resolveEquipmentHostConfig,
+    resolveEquipmentTypeLabel
+} from '@/topology/equipmentDefinitions/index.js';
+import { normalizeEquipmentRows as normalizeCanonicalEquipmentRows } from '@/equipment/rowNormalization.js';
 import {
     FLUID_PLACEMENT_AUTO_OPTIONS,
     FLUID_PLACEMENT_DEFAULT_OPTION,
@@ -49,9 +53,8 @@ const ANNULUS_NODE_KIND_BY_SLOT_INDEX = Object.freeze([
     'ANNULUS_C',
     'ANNULUS_D'
 ]);
-const TOPOLOGY_NODE_KIND_TUBING_ANNULUS = 'TUBING_ANNULUS';
 
-const [AUTO_FORMATION_ANNULUS, AUTO_PRODUCTION_ANNULUS, AUTO_A_ANNULUS, AUTO_B_ANNULUS, AUTO_C_ANNULUS] = FLUID_PLACEMENT_AUTO_OPTIONS;
+const [AUTO_FORMATION_ANNULUS, AUTO_ANNULUS_A, AUTO_ANNULUS_B, AUTO_ANNULUS_C, AUTO_ANNULUS_D] = FLUID_PLACEMENT_AUTO_OPTIONS;
 
 function isDepthWithin(depth, top, bottom) {
     if (!Number.isFinite(depth) || !Number.isFinite(top) || !Number.isFinite(bottom)) return false;
@@ -74,10 +77,11 @@ function normalizeFluidPlacementToken(value) {
     const compact = raw.replace(/[\s_-]+/g, '').toLowerCase();
 
     if (compact.includes('formation')) return AUTO_FORMATION_ANNULUS;
-    if (compact.includes('production')) return AUTO_PRODUCTION_ANNULUS;
-    if (compact.includes('aannulus') || compact === 'a') return AUTO_A_ANNULUS;
-    if (compact.includes('bannulus') || compact === 'b') return AUTO_B_ANNULUS;
-    if (compact.includes('cannulus') || compact === 'c') return AUTO_C_ANNULUS;
+    if (compact.includes('production')) return AUTO_ANNULUS_A;
+    if (compact.includes('annulusa') || compact.includes('aannulus') || compact === 'a') return AUTO_ANNULUS_A;
+    if (compact.includes('annulusb') || compact.includes('bannulus') || compact === 'b') return AUTO_ANNULUS_B;
+    if (compact.includes('annulusc') || compact.includes('cannulus') || compact === 'c') return AUTO_ANNULUS_C;
+    if (compact.includes('annulusd') || compact.includes('dannulus') || compact === 'd') return AUTO_ANNULUS_D;
 
     if (raw.toLowerCase().startsWith('behind:')) {
         const casingRef = raw.slice(raw.indexOf(':') + 1).trim();
@@ -239,7 +243,7 @@ function normalizeDrillStringRows(drillStringData = []) {
 }
 
 function normalizeEquipmentRows(equipmentData = []) {
-    return equipmentData
+    return normalizeCanonicalEquipmentRows(equipmentData)
         .map((row, index) => {
             const depth = parseOptionalNumber(row?.depth);
             if (!Number.isFinite(depth)) return null;
@@ -249,7 +253,7 @@ function normalizeEquipmentRows(equipmentData = []) {
                 __index: index,
                 sourceIndex: index,
                 depth,
-                type: String(row?.type ?? 'Packer').trim(),
+                type: resolveEquipmentTypeLabel(row?.typeKey ?? row?.type, row?.type ?? 'Packer'),
                 color: String(row?.color ?? '#000000').trim(),
                 scale: parseOptionalNumber(row?.scale) ?? 1.0,
             };
@@ -500,18 +504,12 @@ export function resolveHangers(casingRows = [], options = {}) {
 
 function resolveModeledAnnulusKindBySlotIndex(slotIndex, options = {}) {
     const isFormation = options?.isFormation === true;
-    const hasTubingAnnulus = options?.hasTubingAnnulus === true;
     if (!Number.isInteger(slotIndex) || slotIndex < 0) {
         return isFormation ? 'FORMATION_ANNULUS' : null;
     }
 
-    if (hasTubingAnnulus && slotIndex === 0) {
-        return TOPOLOGY_NODE_KIND_TUBING_ANNULUS;
-    }
-
-    const adjustedSlotIndex = hasTubingAnnulus ? slotIndex - 1 : slotIndex;
-    if (adjustedSlotIndex >= 0 && adjustedSlotIndex < ANNULUS_NODE_KIND_BY_SLOT_INDEX.length) {
-        return ANNULUS_NODE_KIND_BY_SLOT_INDEX[adjustedSlotIndex];
+    if (slotIndex < ANNULUS_NODE_KIND_BY_SLOT_INDEX.length) {
+        return ANNULUS_NODE_KIND_BY_SLOT_INDEX[slotIndex];
     }
     return isFormation ? 'FORMATION_ANNULUS' : null;
 }
@@ -541,10 +539,6 @@ function resolvePackerSealSlotForHost(depth, hostType, hostRow, options = {}) {
     const outerEnvironmentRadius = resolveOuterEnvironmentRadius(activeSteel, activeOpenHoles, depth);
     const annuli = buildAnnulusSlots(activeSteel, outerEnvironmentRadius);
     if (annuli.length === 0) return null;
-    const hasTubingAnnulus = annuli.some((slot) =>
-        Number(slot?.index) === 0 && slot?.innerPipe?.pipeType === PIPE_TYPE_TUBING
-    );
-
     const hostPipeType = hostType === PIPE_HOST_TYPE_TUBING
         ? PIPE_TYPE_TUBING
         : PIPE_TYPE_CASING;
@@ -565,7 +559,6 @@ function resolvePackerSealSlotForHost(depth, hostType, hostRow, options = {}) {
         ? Number(sealSlot.index)
         : null;
     const sealNodeKind = resolveModeledAnnulusKindBySlotIndex(sealSlotIndex, {
-        hasTubingAnnulus,
         isFormation: sealSlot?.isFormation === true
     });
     const sealInnerDiameter = Number.isFinite(sealSlot?.innerRadius)
@@ -599,6 +592,17 @@ function createUnresolvedPackerResolution(warningCode, hostType = null, hostRow 
         isOrphaned: true,
         attachWarningCode: warningCode
     };
+}
+
+function hostConfigAllowsHostType(hostConfig, hostType) {
+    const normalizedHostType = String(hostType ?? '').trim().toLowerCase();
+    if (!normalizedHostType) return false;
+    const allowedHostTypes = Array.isArray(hostConfig?.allowedHostTypes)
+        ? hostConfig.allowedHostTypes
+        : [];
+    return allowedHostTypes.some((candidate) => (
+        String(candidate ?? '').trim().toLowerCase() === normalizedHostType
+    ));
 }
 
 function resolvePackerAttachment(equip, depth, pipeReferenceMap, options = {}) {
@@ -650,6 +654,15 @@ function resolvePackerAttachment(equip, depth, pipeReferenceMap, options = {}) {
     };
 }
 
+function resolveEquipmentHostResolution(equip, depth, pipeReferenceMap, options = {}) {
+    const hostConfig = resolveEquipmentHostConfig(equip?.typeKey ?? equip?.type);
+    if (!hostConfig) return null;
+    if (hostConfig.attachmentStrategy === 'annular-barrier') {
+        return resolvePackerAttachment(equip, depth, pipeReferenceMap, options);
+    }
+    return null;
+}
+
 export function resolveEquipment(equipmentRows = [], tubingRows = [], casingRows = [], options = {}) {
     const resolved = [];
     const normalizedCasingRows = normalizeCasingRows(casingRows);
@@ -660,18 +673,21 @@ export function resolveEquipment(equipmentRows = [], tubingRows = [], casingRows
 
     equipmentRows.forEach((equip) => {
         const probeDepth = equip.depth; // Use exact depth, isDepthWithinInclusive handles tolerance.
+        const hostConfig = resolveEquipmentHostConfig(equip?.typeKey ?? equip?.type);
 
         // Find the innermost tubing the equipment is inside
-        const tubingParent = normalizedTubingRows
-            .filter((candidate) =>
-                Number.isFinite(candidate.od) &&
-                isDepthWithinInclusive(probeDepth, candidate.top, candidate.bottom)
-            )
-            .sort((a, b) => a.od - b.od)[0] ?? null;
+        const tubingParent = hostConfigAllowsHostType(hostConfig, PIPE_HOST_TYPE_TUBING)
+            ? normalizedTubingRows
+                .filter((candidate) =>
+                    Number.isFinite(candidate.od) &&
+                    isDepthWithinInclusive(probeDepth, candidate.top, candidate.bottom)
+                )
+                .sort((a, b) => a.od - b.od)[0] ?? null
+            : null;
 
         const equipmentBase = {
             ...equip,
-            type: resolveEquipmentTypeLabel(equip?.type),
+            type: resolveEquipmentTypeLabel(equip?.typeKey ?? equip?.type),
             tubingParentIndex: tubingParent?.__index ?? null,
             tubingParentOD: tubingParent?.od ?? null,
             tubingParentID: tubingParent?.innerDiameter ?? null,
@@ -688,15 +704,16 @@ export function resolveEquipment(equipmentRows = [], tubingRows = [], casingRows
             attachWarningCode: null
         };
 
-        if (isPackerEquipmentType(equipmentBase.type)) {
+        const hostResolution = resolveEquipmentHostResolution(equipmentBase, probeDepth, pipeReferenceMap, {
+            casingRows: normalizedCasingRows,
+            tubingRows: normalizedTubingRows,
+            drillStringRows: normalizedDrillStringRows,
+            operationPhase: normalizedOperationPhase
+        });
+        if (hostResolution) {
             Object.assign(
                 equipmentBase,
-                resolvePackerAttachment(equipmentBase, probeDepth, pipeReferenceMap, {
-                    casingRows: normalizedCasingRows,
-                    tubingRows: normalizedTubingRows,
-                    drillStringRows: normalizedDrillStringRows,
-                    operationPhase: normalizedOperationPhase
-                })
+                hostResolution
             );
         }
 
@@ -1494,14 +1511,17 @@ function resolveAnnulusIndexForPlacement(placement, annuli, context, placementRe
     if (placement === AUTO_FORMATION_ANNULUS) {
         return annuli[annuli.length - 1]?.index ?? null;
     }
-    if (placement === AUTO_PRODUCTION_ANNULUS || placement === AUTO_A_ANNULUS) {
+    if (placement === AUTO_ANNULUS_A) {
         return annuli[0]?.index ?? null;
     }
-    if (placement === AUTO_B_ANNULUS) {
+    if (placement === AUTO_ANNULUS_B) {
         return annuli[1]?.index ?? null;
     }
-    if (placement === AUTO_C_ANNULUS) {
+    if (placement === AUTO_ANNULUS_C) {
         return annuli[2]?.index ?? null;
+    }
+    if (placement === AUTO_ANNULUS_D) {
+        return annuli[3]?.index ?? null;
     }
     if (placement.toLowerCase().startsWith('behind:')) {
         const casingRef = placement.slice(placement.indexOf(':') + 1).trim();

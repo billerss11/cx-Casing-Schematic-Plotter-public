@@ -4,11 +4,11 @@ import {
     EDGE_KIND_RADIAL,
     EDGE_KIND_TERMINATION,
     EDGE_KIND_VERTICAL,
+    MODELED_CASING_ANNULUS_KINDS,
     MODELED_ANNULUS_VOLUME_SLOTS,
     NODE_KIND_ANNULUS_A,
     NODE_KIND_BORE,
     NODE_KIND_FORMATION_ANNULUS,
-    NODE_KIND_TUBING_ANNULUS,
     TOPOLOGY_EPSILON,
     TOPOLOGY_VOLUME_KINDS,
     SOURCE_KIND_LEAK,
@@ -65,11 +65,122 @@ function appendEdge(edges, edgeReasons, edge) {
     edgeReasons[edge.edgeId] = edge.reason;
 }
 
+function resolveContributionInterval(intervalToken, currentInterval, nextInterval) {
+    return String(intervalToken ?? '').trim().toLowerCase() === 'next'
+        ? nextInterval
+        : currentInterval;
+}
+
+function appendEquipmentConnectionContributionEdges({
+    edges,
+    edgeReasons,
+    currentInterval,
+    nextInterval,
+    intervalNodeByKind,
+    connectionContributions
+}) {
+    toSafeArray(connectionContributions).forEach((contribution, contributionIndex) => {
+        const fromInterval = resolveContributionInterval(contribution?.fromInterval, currentInterval, nextInterval);
+        const toInterval = resolveContributionInterval(contribution?.toInterval, currentInterval, nextInterval);
+        const fromVolumeKey = String(contribution?.fromVolumeKey ?? '').trim();
+        const toVolumeKey = String(contribution?.toVolumeKey ?? '').trim();
+        if (!fromInterval || !toInterval || !fromVolumeKey || !toVolumeKey) return;
+
+        const fromNode = resolveIntervalNodeByVolumeKind(intervalNodeByKind, fromInterval, fromVolumeKey);
+        const toNode = resolveIntervalNodeByVolumeKind(intervalNodeByKind, toInterval, toVolumeKey);
+        if (!fromNode || !toNode) return;
+
+        const edgeKind = String(contribution?.edgeKind ?? '').trim() || EDGE_KIND_RADIAL;
+        const edgeId = createEdgeId(
+            edgeKind,
+            fromNode.nodeId,
+            toNode.nodeId,
+            `equipment-connection:${contribution?.rowId ?? contributionIndex}:${fromInterval.intervalIndex}:${toInterval.intervalIndex}:${fromVolumeKey}:${toVolumeKey}:${contributionIndex}`
+        );
+        const contributor = {
+            rowId: String(contribution?.rowId ?? '').trim() || null,
+            equipmentType: String(contribution?.equipmentType ?? '').trim() || null,
+            state: String(contribution?.state ?? 'open').trim() || 'open',
+            cost: Number.isFinite(Number(contribution?.cost)) ? Number(contribution.cost) : 0,
+            functionKey: String(contribution?.functionKey ?? '').trim() || null
+        };
+
+        appendEdge(edges, edgeReasons, {
+            edgeId,
+            from: fromNode.nodeId,
+            to: toNode.nodeId,
+            kind: edgeKind,
+            direction: String(contribution?.direction ?? 'bidirectional').trim() || 'bidirectional',
+            cost: contributor.cost,
+            state: contributor.state,
+            meta: {
+                transitionRuleId: 'equipment-connection',
+                rowId: contributor.rowId,
+                equipmentType: contributor.equipmentType,
+                functionKey: contributor.functionKey,
+                fromVolumeKey,
+                toVolumeKey
+            },
+            reason: {
+                ruleId: 'equipment-connection',
+                summary: String(contribution?.summary ?? '').trim()
+                    || 'Equipment definition contributes an explicit topology connection.',
+                details: {
+                    fromInterval: fromInterval.intervalIndex,
+                    toInterval: toInterval.intervalIndex,
+                    fromVolumeKey,
+                    toVolumeKey,
+                    equipmentContributors: [contributor]
+                }
+            }
+        });
+    });
+}
+
 function resolveBoundaryEquipmentEffectByVolumeKind(volumeKind, equipmentEffects = {}) {
     const byVolume = equipmentEffects?.byVolume && typeof equipmentEffects.byVolume === 'object'
         ? equipmentEffects.byVolume
         : {};
     return byVolume[volumeKind] ?? null;
+}
+
+const ANNULUS_CONTINUITY_IDENTITY_KEYS = Object.freeze([
+    'innerPipeType',
+    'innerPipeRowId',
+    'outerPipeType',
+    'outerPipeRowId'
+]);
+
+const ANNULUS_VERTICAL_CONTINUITY_KIND_SET = new Set([
+    ...MODELED_CASING_ANNULUS_KINDS,
+    NODE_KIND_FORMATION_ANNULUS
+]);
+
+function normalizeIdentityToken(value) {
+    const token = String(value ?? '').trim().toLowerCase();
+    return token || null;
+}
+
+function resolveAnnulusChannelIdentity(node = {}) {
+    const meta = node?.meta && typeof node.meta === 'object' ? node.meta : {};
+    return {
+        innerPipeType: normalizeIdentityToken(meta.innerPipeType),
+        innerPipeRowId: normalizeIdentityToken(meta.innerPipeRowId),
+        outerPipeType: normalizeIdentityToken(meta.outerPipeType),
+        outerPipeRowId: normalizeIdentityToken(meta.outerPipeRowId)
+    };
+}
+
+function shouldGateAnnulusVerticalContinuity(kind) {
+    return ANNULUS_VERTICAL_CONTINUITY_KIND_SET.has(kind);
+}
+
+function isAnnulusChannelIdentityContinuous(fromNode = {}, toNode = {}) {
+    const fromIdentity = resolveAnnulusChannelIdentity(fromNode);
+    const toIdentity = resolveAnnulusChannelIdentity(toNode);
+    return ANNULUS_CONTINUITY_IDENTITY_KEYS.every((key) => (
+        fromIdentity[key] === toIdentity[key]
+    ));
 }
 
 function createStructuralTransitionWarning(definition, boundaryDepth) {
@@ -170,7 +281,8 @@ export function buildVerticalEdges(intervals, intervalNodeByKind, equipmentRows 
         const equipmentEffects = resolveBoundaryEquipmentEffects(boundaryDepth, equipmentRows, {
             epsilon: TOPOLOGY_EPSILON,
             casingRows: options?.casingRows,
-            tubingRows: options?.tubingRows
+            tubingRows: options?.tubingRows,
+            definitionRegistry: options?.definitionRegistry
         });
         validationWarnings.push(...toSafeArray(equipmentEffects?.validationWarnings));
 
@@ -178,6 +290,12 @@ export function buildVerticalEdges(intervals, intervalNodeByKind, equipmentRows 
             const fromNode = intervalNodeByKind.get(`${currentInterval.intervalIndex}|${kind}`) ?? null;
             const toNode = intervalNodeByKind.get(`${nextInterval.intervalIndex}|${kind}`) ?? null;
             if (!fromNode || !toNode) return;
+            if (
+                shouldGateAnnulusVerticalContinuity(kind)
+                && !isAnnulusChannelIdentityContinuous(fromNode, toNode)
+            ) {
+                return;
+            }
 
             const blockedByMaterial = fromNode?.meta?.isBlocked === true || toNode?.meta?.isBlocked === true;
             const equipmentEffect = resolveBoundaryEquipmentEffectByVolumeKind(kind, equipmentEffects);
@@ -224,6 +342,15 @@ export function buildVerticalEdges(intervals, intervalNodeByKind, equipmentRows 
             intervalNodeByKind,
             boundaryDepth,
             equipmentEffects
+        });
+
+        appendEquipmentConnectionContributionEdges({
+            edges,
+            edgeReasons,
+            currentInterval,
+            nextInterval,
+            intervalNodeByKind,
+            connectionContributions: equipmentEffects?.connectionContributions
         });
     }
 
@@ -352,25 +479,28 @@ function resolveVolumeKindForCasingBoundarySlot(slotIndex) {
     return null;
 }
 
-function createDefaultRadialVolumePair(intervalNodeByKind, interval) {
-    const tubingAnnulusNode = resolveIntervalNodeByVolumeKind(
+function resolveFirstResolvableAnnulusVolumeKind(intervalNodeByKind, interval) {
+    for (const slot of MODELED_ANNULUS_VOLUME_SLOTS) {
+        const node = resolveIntervalNodeByVolumeKind(intervalNodeByKind, interval, slot.kind);
+        if (node) return slot.kind;
+    }
+
+    const formationNode = resolveIntervalNodeByVolumeKind(
         intervalNodeByKind,
         interval,
-        NODE_KIND_TUBING_ANNULUS
+        NODE_KIND_FORMATION_ANNULUS
     );
-    if (tubingAnnulusNode) {
-        return {
-            innerVolumeKind: NODE_KIND_BORE,
-            outerVolumeKind: NODE_KIND_TUBING_ANNULUS,
-            pairSource: 'default_tubing_inner_tubing_annulus',
-            hostCasingIndex: null
-        };
-    }
+    return formationNode ? NODE_KIND_FORMATION_ANNULUS : null;
+}
+
+function createDefaultRadialVolumePair(intervalNodeByKind, interval) {
+    const firstResolvableAnnulusKind = resolveFirstResolvableAnnulusVolumeKind(intervalNodeByKind, interval);
+    if (!firstResolvableAnnulusKind) return null;
 
     return {
         innerVolumeKind: NODE_KIND_BORE,
-        outerVolumeKind: NODE_KIND_ANNULUS_A,
-        pairSource: 'default_bore_annulus_a',
+        outerVolumeKind: firstResolvableAnnulusKind,
+        pairSource: 'default_bore_first_resolvable_annulus',
         hostCasingIndex: null
     };
 }
@@ -389,15 +519,19 @@ function resolveCasingHostRadialVolumePair(interval, resolvedHost, pipeReference
     }
     if (hostCasingIndex < 0) return null;
 
-    const tubingAnnulusNode = resolveIntervalNodeByVolumeKind(
+    const annulusANode = resolveIntervalNodeByVolumeKind(
         intervalNodeByKind,
         interval,
-        NODE_KIND_TUBING_ANNULUS
+        NODE_KIND_ANNULUS_A
     );
-    const innerVolumeKind = hostCasingIndex === 0
-        ? (tubingAnnulusNode ? NODE_KIND_TUBING_ANNULUS : NODE_KIND_BORE)
-        : resolveVolumeKindForCasingBoundarySlot(hostCasingIndex - 1);
-    const outerVolumeKind = resolveVolumeKindForCasingBoundarySlot(hostCasingIndex);
+    const tubingPresentAtInterval = String(annulusANode?.meta?.innerPipeType ?? '').trim().toLowerCase() === 'tubing';
+    const annulusShift = tubingPresentAtInterval ? 1 : 0;
+    const outerBoundarySlotIndex = hostCasingIndex + annulusShift;
+    const innerBoundarySlotIndex = outerBoundarySlotIndex - 1;
+    const innerVolumeKind = innerBoundarySlotIndex < 0
+        ? NODE_KIND_BORE
+        : resolveVolumeKindForCasingBoundarySlot(innerBoundarySlotIndex);
+    const outerVolumeKind = resolveVolumeKindForCasingBoundarySlot(outerBoundarySlotIndex);
     if (!innerVolumeKind || !outerVolumeKind || innerVolumeKind === outerVolumeKind) {
         return null;
     }
@@ -510,6 +644,7 @@ export function buildRadialEdges(stateSnapshot, intervals, intervalNodeByKind, p
             let radialVolumePair = tubingHostLeak
                 ? fallbackVolumePair
                 : (casingHostVolumePair ?? fallbackVolumePair);
+            if (!radialVolumePair) return;
             let innerNode = intervalNodeByKind.get(
                 `${interval.intervalIndex}|${radialVolumePair.innerVolumeKind}`
             ) ?? null;
@@ -518,6 +653,7 @@ export function buildRadialEdges(stateSnapshot, intervals, intervalNodeByKind, p
             ) ?? null;
             if ((!innerNode || !outerNode) && !tubingHostLeak) {
                 radialVolumePair = fallbackVolumePair;
+                if (!radialVolumePair) return;
                 innerNode = intervalNodeByKind.get(
                     `${interval.intervalIndex}|${radialVolumePair.innerVolumeKind}`
                 ) ?? null;

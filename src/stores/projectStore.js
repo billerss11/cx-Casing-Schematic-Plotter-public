@@ -398,6 +398,41 @@ export const useProjectStore = defineStore('project', () => {
         return true;
     }
 
+    function createBlankProject(options = {}) {
+        ensureDirtyTrackingInitialized();
+
+        const firstWell = createWellRecord({
+            name: normalizeWellName(options.defaultWellName, 'Well 1'),
+            data: createEmptyWellData(),
+            config: createDefaultWellConfig()
+        }, 0);
+
+        withDirtyTrackingSuspended(() => {
+            finishEditingAllHotTables();
+            resetTransientStateForWellSwitch();
+            viewConfigStore.resetCameraViewsForWellSwitch();
+
+            state.projectName = normalizeProjectName(options.projectName, 'Project');
+            state.projectAuthor = normalizeProjectAuthor(options.projectAuthor, '');
+            state.projectConfig = {
+                ...createDefaultProjectConfig(),
+                defaultUnits: normalizeProjectUnits(options.defaultUnits)
+            };
+            state.wells = [firstWell];
+            state.activeWellId = firstWell.id;
+            clearProjectFileContext();
+            hydrateRuntimeFromWell(firstWell);
+        });
+
+        state.hasUnsavedChanges = options.markDirty !== false;
+        requestSchematicRender({ immediate: true });
+        return {
+            ok: true,
+            activeWellId: firstWell.id,
+            wellId: firstWell.id
+        };
+    }
+
     function setProjectName(name) {
         const nextName = normalizeProjectName(name, state.projectName || 'Project');
         if (nextName === state.projectName) return false;
@@ -683,6 +718,7 @@ export const useProjectStore = defineStore('project', () => {
         clearProjectFileContext,
         markProjectSaved,
         loadProject,
+        createBlankProject,
         setActiveWell,
         syncActiveWellData,
         createNewWell,

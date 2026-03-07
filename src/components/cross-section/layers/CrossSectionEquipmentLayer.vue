@@ -55,7 +55,7 @@ const shapes = computed(() => {
     const scaleFactor = Number.isFinite(Number(item?.scale)) && Number(item.scale) > 0 ? Number(item.scale) : 1;
     const semantics = resolveEquipmentTypeSemantics(item?.type);
 
-    if (semantics.typeKey === 'packer') {
+    if (semantics.isPackerLike) {
       const isOrphaned = item?.isOrphaned === true;
       const innerRadius = Number(item?.sealInnerRadius ?? item?.tubingOuterRadius);
       const outerRadius = Number(item?.sealOuterRadius ?? item?.parentInnerRadius);
@@ -89,7 +89,7 @@ const shapes = computed(() => {
         });
       }
       return;
-    } else if (semantics.isSafetyValve) {
+    } else if (semantics.isInlineValve) {
       const innerRadius = Number(item?.tubingInnerRadius);
       if (!Number.isFinite(innerRadius) || innerRadius <= EPSILON) return;
       const innerRadiusPx = innerRadius * scale;

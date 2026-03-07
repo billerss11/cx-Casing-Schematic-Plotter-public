@@ -14,9 +14,10 @@ import {
     buildEquipmentAttachOptions,
     findEquipmentAttachOptionByHostAndId,
     findEquipmentAttachOptionByValue,
-    isPackerEquipmentType,
     normalizeEquipmentAttachHostType
 } from '@/utils/equipmentAttachReference.js';
+import { normalizeEquipmentRow } from '@/equipment/rowNormalization.js';
+import { resolveEquipmentHostConfig } from '@/topology/equipmentDefinitions/index.js';
 
 export const PROJECT_DATA_KEYS = new Set([
     'casingData',
@@ -176,7 +177,29 @@ function resolveInnermostHostRowAtDepth(rows = [], depth) {
         })[0] ?? null;
 }
 
-function resolveLegacyPackerAttachOption(row, attachOptions, casingRows, tubingRows) {
+function resolveEquipmentHostContract(row = {}) {
+    return resolveEquipmentHostConfig(row?.typeKey ?? row?.type) ?? null;
+}
+
+function buildCompatibleEquipmentAttachOptions(row, casingRows, tubingRows) {
+    const attachOptions = buildEquipmentAttachOptions(casingRows, tubingRows);
+    const allowedHostTypes = resolveEquipmentHostContract(row)?.allowedHostTypes;
+    if (!Array.isArray(allowedHostTypes) || allowedHostTypes.length === 0) {
+        return attachOptions;
+    }
+
+    const allowedHostTypeSet = new Set(
+        allowedHostTypes
+            .map((hostType) => normalizeEquipmentAttachHostType(hostType))
+            .filter(Boolean)
+    );
+    return attachOptions.filter((option) => allowedHostTypeSet.has(option.hostType));
+}
+
+function resolveLegacyEquipmentAttachOption(row, attachOptions, casingRows, tubingRows) {
+    const hostContract = resolveEquipmentHostContract(row);
+    if (hostContract?.defaultAttachTargetStrategy !== 'innermost-overlap') return null;
+
     const depth = parseOptionalNumber(row?.depth);
     const preferredTubingRow = resolveInnermostHostRowAtDepth(tubingRows, depth);
     const preferredCasingRow = resolveInnermostHostRowAtDepth(casingRows, depth);
@@ -191,13 +214,15 @@ function resolveLegacyPackerAttachOption(row, attachOptions, casingRows, tubingR
 
 function normalizeEquipmentAttachReferenceRow(row, pipeReferenceMap, casingRows, tubingRows) {
     if (!row || typeof row !== 'object' || Array.isArray(row)) return row;
-    if (!isPackerEquipmentType(row?.type)) return row;
+    const normalizedRow = normalizeEquipmentRow(row);
+    const hostContract = resolveEquipmentHostContract(normalizedRow);
+    if (hostContract?.usesAttachReference !== true) return normalizedRow;
 
-    const attachOptions = buildEquipmentAttachOptions(casingRows, tubingRows);
-    const attachToDisplay = String(row?.attachToDisplay ?? '').trim();
-    const attachToRow = String(row?.attachToRow ?? '').trim();
-    const attachToId = normalizeRowId(row?.attachToId);
-    const normalizedHostType = normalizeEquipmentAttachHostType(row?.attachToHostType);
+    const attachOptions = buildCompatibleEquipmentAttachOptions(normalizedRow, casingRows, tubingRows);
+    const attachToDisplay = String(normalizedRow?.attachToDisplay ?? '').trim();
+    const attachToRow = String(normalizedRow?.attachToRow ?? '').trim();
+    const attachToId = normalizeRowId(normalizedRow?.attachToId);
+    const normalizedHostType = normalizeEquipmentAttachHostType(normalizedRow?.attachToHostType);
 
     let selectedOption = findEquipmentAttachOptionByValue(attachToDisplay, attachOptions);
     if (!selectedOption) {
@@ -223,7 +248,7 @@ function normalizeEquipmentAttachReferenceRow(row, pipeReferenceMap, casingRows,
 
     const hasAttachContractInput = Boolean(attachToDisplay || attachToId || normalizedHostType || attachToRow);
     if (!selectedOption && !hasAttachContractInput) {
-        selectedOption = resolveLegacyPackerAttachOption(row, attachOptions, casingRows, tubingRows);
+        selectedOption = resolveLegacyEquipmentAttachOption(normalizedRow, attachOptions, casingRows, tubingRows);
     }
 
     const nextHostType = selectedOption?.hostType ?? normalizedHostType ?? null;
@@ -232,15 +257,15 @@ function normalizeEquipmentAttachReferenceRow(row, pipeReferenceMap, casingRows,
         ?? (attachToDisplay || null);
 
     if (
-        row.attachToHostType === nextHostType
-        && normalizeRowId(row.attachToId) === nextAttachToId
-        && (String(row.attachToDisplay ?? '').trim() || null) === nextDisplay
+        normalizedRow.attachToHostType === nextHostType
+        && normalizeRowId(normalizedRow.attachToId) === nextAttachToId
+        && (String(normalizedRow.attachToDisplay ?? '').trim() || null) === nextDisplay
     ) {
-        return row;
+        return normalizedRow;
     }
 
     return {
-        ...row,
+        ...normalizedRow,
         attachToHostType: nextHostType,
         attachToId: nextAttachToId,
         attachToDisplay: nextDisplay

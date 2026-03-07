@@ -13,6 +13,7 @@ import { onLanguageChange, t } from '@/app/i18n.js';
 import Menu from 'primevue/menu';
 import CrossSectionPanel from '@/components/cross-section/CrossSectionPanel.vue';
 import SurfaceAssemblyComposerDialog from '@/components/surface-assembly/SurfaceAssemblyComposerDialog.vue';
+import SurfaceAssemblyEntryCard from '@/components/surface-assembly/SurfaceAssemblyEntryCard.vue';
 import SurfaceAssemblyPreview from '@/components/surface-assembly/SurfaceAssemblyPreview.vue';
 import SchematicCanvas from './SchematicCanvas.vue';
 import DirectionalSchematicCanvas from './DirectionalSchematicCanvas.vue';
@@ -310,6 +311,11 @@ onBeforeUnmount(() => {
 
     <div class="plot-view-grid">
       <div class="plot-primary schematic-light-scope">
+        <SurfaceAssemblyEntryCard
+          :has-assembly="Boolean(committedSurfaceAssembly)"
+          @open-composer="openSurfaceAssemblyComposer"
+        />
+
         <div
           v-if="committedSurfaceAssembly"
           class="plot-surface-stage"

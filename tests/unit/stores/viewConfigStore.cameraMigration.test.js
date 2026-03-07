@@ -39,4 +39,14 @@ describe('viewConfigStore camera migration flags contract', () => {
 
     expect(store.uiState.directionalFitToDataRequestCount).toBe(5);
   });
+
+  it('initializes directional label scale with a persisted default and setter contract', () => {
+    const store = useViewConfigStore();
+
+    expect(store.config.directionalLabelScale).toBe(1);
+    expect(store.setDirectionalLabelScale).toBeTypeOf('function');
+
+    store.setDirectionalLabelScale(1.35);
+    expect(store.config.directionalLabelScale).toBe(1.35);
+  });
 });

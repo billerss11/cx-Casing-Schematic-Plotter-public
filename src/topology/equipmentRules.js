@@ -8,9 +8,8 @@ import {
     INTEGRITY_INTACT,
     INTEGRITY_LEAKING
 } from '@/topology/equipmentDefinitions/constants.js';
-import {
-    normalizeEquipmentTypeKey,
-    resolveEquipmentDefinitionByKey
+import equipmentDefinitionRegistry, {
+    normalizeEquipmentTypeKey
 } from '@/topology/equipmentDefinitions/index.js';
 import {
     NODE_KIND_BORE,
@@ -22,6 +21,7 @@ import {
     TOPOLOGY_WARNING_CODES,
     createTopologyValidationWarning
 } from '@/topology/warningCatalog.js';
+import { normalizeEquipmentRow } from '@/equipment/rowNormalization.js';
 
 const SEAL_STATE_OPEN = 'open';
 const SEAL_STATE_CLOSED_FAILABLE = 'closed_failable';
@@ -92,8 +92,26 @@ function createValidationWarning(code, message, row = {}) {
     });
 }
 
-function normalizeEquipmentType(value) {
+function normalizeEquipmentType(value, registry = equipmentDefinitionRegistry) {
+    if (registry && typeof registry.normalizeTypeKey === 'function') {
+        return registry.normalizeTypeKey(value);
+    }
     return normalizeEquipmentTypeKey(value);
+}
+
+function resolveDefinitionRegistry(options = {}) {
+    const registry = options?.definitionRegistry;
+    if (registry && typeof registry.resolveDefinitionByKey === 'function') {
+        return registry;
+    }
+    return equipmentDefinitionRegistry;
+}
+
+function resolveDefinitionEngineering(definition) {
+    if (definition?.engineering && typeof definition.engineering === 'object') {
+        return definition.engineering;
+    }
+    return definition ?? null;
 }
 
 function parseOptionalBoolean(value) {
@@ -246,25 +264,37 @@ function createDefinitionHookContext(options = {}) {
 }
 
 function resolveDefinitionValidationWarnings(definition, row = {}, hookContext = {}) {
-    if (!definition || typeof definition.validate !== 'function') return [];
-    const result = definition.validate(row, hookContext);
+    const engineering = resolveDefinitionEngineering(definition);
+    if (!engineering || typeof engineering.validate !== 'function') return [];
+    const result = engineering.validate(row, hookContext);
     if (Array.isArray(result)) return result.filter(Boolean);
     if (!Array.isArray(result?.warnings)) return [];
     return result.warnings.filter(Boolean);
 }
 
 function resolveDefinitionSealContext(definition, row = {}, hookContext = {}) {
-    if (!definition || typeof definition.resolveSealContext !== 'function') return null;
-    const result = definition.resolveSealContext(row, hookContext);
+    const engineering = resolveDefinitionEngineering(definition);
+    if (!engineering || typeof engineering.resolveSealContext !== 'function') return null;
+    const result = engineering.resolveSealContext(row, hookContext);
     if (!result || typeof result !== 'object' || Array.isArray(result)) return null;
     return result;
 }
 
 function resolveDefinitionNoSealSuppressionCodes(definition) {
-    if (!definition || !Array.isArray(definition.suppressNoSealWarningCodes)) return [];
-    return definition.suppressNoSealWarningCodes
+    const engineering = resolveDefinitionEngineering(definition);
+    const suppressCodes = Array.isArray(engineering?.suppressNoSealWarningCodes)
+        ? engineering.suppressNoSealWarningCodes
+        : [];
+    return suppressCodes
         .map((code) => String(code ?? '').trim())
         .filter((code) => code.length > 0);
+}
+
+function resolveDefinitionConnectionContributions(definition, row = {}, hookContext = {}) {
+    const engineering = resolveDefinitionEngineering(definition);
+    if (!engineering || typeof engineering.resolveConnections !== 'function') return [];
+    const result = engineering.resolveConnections(row, hookContext);
+    return Array.isArray(result) ? result.filter(Boolean) : [];
 }
 
 function resolveHookDefaultSealByVolume(defaultSealByVolume = {}, hookValue = null) {
@@ -313,74 +343,79 @@ function buildResolvedSealByVolume({
 }
 
 function resolveRowRule(row = {}, options = {}) {
-    const normalizedType = normalizeEquipmentType(row?.type);
-    const definition = resolveEquipmentDefinitionByKey(normalizedType);
-    const baseRule = definition?.schema?.defaults ?? DEFAULT_RULE_FALLBACK;
+    const normalizedRow = normalizeEquipmentRow(row);
+    const definitionRegistry = resolveDefinitionRegistry(options);
+    const normalizedType = normalizeEquipmentType(
+        normalizedRow?.typeKey ?? normalizedRow?.type,
+        definitionRegistry
+    );
+    const definition = definitionRegistry.resolveDefinitionByKey(normalizedType);
+    const baseRule = definition?.defaults ?? definition?.schema?.defaults ?? DEFAULT_RULE_FALLBACK;
     const hookContext = createDefinitionHookContext(options);
     const validationWarnings = [];
     const defaultSealByVolume = resolveSealByVolumeDefaults(baseRule);
 
-    const annularSealOverride = parseOptionalBoolean(row?.annularSeal ?? row?.annulusSeal);
-    const boreSealOverride = parseOptionalBoolean(row?.boreSeal);
-    const hasRawAnnularSeal = normalizeToken(row?.annularSeal ?? row?.annulusSeal).length > 0;
-    const hasRawBoreSeal = normalizeToken(row?.boreSeal).length > 0;
+    const annularSealOverride = parseOptionalBoolean(normalizedRow?.annularSeal ?? normalizedRow?.annulusSeal);
+    const boreSealOverride = parseOptionalBoolean(normalizedRow?.boreSeal);
+    const hasRawAnnularSeal = normalizeToken(normalizedRow?.annularSeal ?? normalizedRow?.annulusSeal).length > 0;
+    const hasRawBoreSeal = normalizeToken(normalizedRow?.boreSeal).length > 0;
     const annularSeal = annularSealOverride === null
         ? Boolean(baseRule.annularSeal)
         : annularSealOverride;
     const boreSeal = boreSealOverride === null
         ? Boolean(baseRule.boreSeal)
         : boreSealOverride;
-    const actuationResult = normalizeActuationState(row?.actuationState, baseRule.defaultActuationState);
-    const integrityResult = normalizeIntegrityStatus(row?.integrityStatus, baseRule.defaultIntegrityStatus);
-    const volumeOverrideResult = resolvePerVolumeSealOverrides(row);
+    const actuationResult = normalizeActuationState(normalizedRow?.actuationState, baseRule.defaultActuationState);
+    const integrityResult = normalizeIntegrityStatus(normalizedRow?.integrityStatus, baseRule.defaultIntegrityStatus);
+    const volumeOverrideResult = resolvePerVolumeSealOverrides(normalizedRow);
 
     if (!definition) {
         validationWarnings.push(createValidationWarning(
             EQUIPMENT_WARNING_UNKNOWN_TYPE,
             'Equipment type is not recognized by topology rules; default no-seal behavior is applied.',
-            row
+            normalizedRow
         ));
     }
     if (hasRawAnnularSeal && annularSealOverride === null) {
         validationWarnings.push(createValidationWarning(
             EQUIPMENT_WARNING_INVALID_ANNULAR_SEAL_OVERRIDE,
             'Annular seal override value is invalid. Expected true/false or blank.',
-            row
+            normalizedRow
         ));
     }
     if (hasRawBoreSeal && boreSealOverride === null) {
         validationWarnings.push(createValidationWarning(
             EQUIPMENT_WARNING_INVALID_BORE_SEAL_OVERRIDE,
             'Bore seal override value is invalid. Expected true/false or blank.',
-            row
+            normalizedRow
         ));
     }
-    if (!actuationResult.isRecognized && normalizeToken(row?.actuationState).length > 0) {
+    if (!actuationResult.isRecognized && normalizeToken(normalizedRow?.actuationState).length > 0) {
         validationWarnings.push(createValidationWarning(
             EQUIPMENT_WARNING_UNKNOWN_ACTUATION_STATE,
             'Actuation state is not recognized. Expected static/open/closed or blank.',
-            row
+            normalizedRow
         ));
     }
-    if (!integrityResult.isRecognized && normalizeToken(row?.integrityStatus).length > 0) {
+    if (!integrityResult.isRecognized && normalizeToken(normalizedRow?.integrityStatus).length > 0) {
         validationWarnings.push(createValidationWarning(
             EQUIPMENT_WARNING_UNKNOWN_INTEGRITY_STATUS,
             'Integrity status is not recognized. Expected intact/failed_open/failed_closed/leaking or blank.',
-            row
+            normalizedRow
         ));
     }
     if (volumeOverrideResult.invalidKeys.length > 0) {
         validationWarnings.push(createValidationWarning(
             EQUIPMENT_WARNING_INVALID_VOLUME_SEAL_OVERRIDE_KEY,
             `Per-volume seal override contains unsupported keys: ${volumeOverrideResult.invalidKeys.join(', ')}.`,
-            row
+            normalizedRow
         ));
     }
     if (volumeOverrideResult.invalidValues.length > 0) {
         validationWarnings.push(createValidationWarning(
             EQUIPMENT_WARNING_INVALID_VOLUME_SEAL_OVERRIDE_VALUE,
             'Per-volume seal override values must be true/false (or 1/0/yes/no).',
-            row
+            normalizedRow
         ));
     }
     if (
@@ -390,20 +425,20 @@ function resolveRowRule(row = {}, options = {}) {
         validationWarnings.push(createValidationWarning(
             EQUIPMENT_WARNING_CONFLICT_CLOSED_WITH_OPEN_INTEGRITY,
             'Integrity status implies open/leaking behavior and overrides a closed actuation state.',
-            row
+            normalizedRow
         ));
     }
     if (actuationResult.value === ACTUATION_OPEN && integrityResult.value === INTEGRITY_FAILED_CLOSED) {
         validationWarnings.push(createValidationWarning(
             EQUIPMENT_WARNING_CONFLICT_OPEN_WITH_FAILED_CLOSED,
             'Integrity status implies failed-closed behavior and overrides an open actuation state.',
-            row
+            normalizedRow
         ));
     }
 
-    validationWarnings.push(...resolveDefinitionValidationWarnings(definition, row, hookContext));
+    validationWarnings.push(...resolveDefinitionValidationWarnings(definition, normalizedRow, hookContext));
 
-    const definitionSealContext = resolveDefinitionSealContext(definition, row, hookContext);
+    const definitionSealContext = resolveDefinitionSealContext(definition, normalizedRow, hookContext);
     const effectiveDefaultSealByVolume = resolveHookDefaultSealByVolume(
         defaultSealByVolume,
         definitionSealContext?.defaultSealByVolume
@@ -428,6 +463,9 @@ function resolveRowRule(row = {}, options = {}) {
     });
 
     return {
+        row: normalizedRow,
+        definition,
+        hookContext,
         type: normalizedType,
         sealByVolume,
         annularSeal,
@@ -498,6 +536,7 @@ function createEmptyBoundaryEffects() {
 
     return {
         byVolume,
+        connectionContributions: [],
         validationWarnings: []
     };
 }
@@ -510,6 +549,42 @@ function appendContributor(target, sourceRow, type, sealResult, functionKey) {
         cost: sealResult.cost,
         functionKey: String(functionKey ?? '').trim() || null
     });
+}
+
+function normalizeConnectionContribution(rawContribution = {}, row = {}, type = null) {
+    const edgeKind = normalizeToken(rawContribution?.edgeKind);
+    if (edgeKind !== 'vertical' && edgeKind !== 'radial') return null;
+
+    const directionToken = normalizeToken(rawContribution?.direction);
+    const direction = directionToken === 'forward' || directionToken === 'reverse'
+        ? directionToken
+        : 'bidirectional';
+    const fromInterval = normalizeToken(rawContribution?.fromInterval) === 'next'
+        ? 'next'
+        : 'current';
+    const toInterval = normalizeToken(rawContribution?.toInterval) === 'next'
+        ? 'next'
+        : 'current';
+    const fromVolumeKey = normalizeSourceVolumeKind(rawContribution?.fromVolumeKey);
+    const toVolumeKey = normalizeSourceVolumeKind(rawContribution?.toVolumeKey);
+    if (!fromVolumeKey || !toVolumeKey) return null;
+
+    const parsedCost = Number(rawContribution?.cost);
+    const cost = Number.isFinite(parsedCost) ? parsedCost : 0;
+    return {
+        edgeKind,
+        direction,
+        fromInterval,
+        toInterval,
+        fromVolumeKey,
+        toVolumeKey,
+        state: String(rawContribution?.state ?? 'open').trim() || 'open',
+        cost,
+        functionKey: String(rawContribution?.functionKey ?? 'equipment_connection').trim() || 'equipment_connection',
+        summary: String(rawContribution?.summary ?? '').trim(),
+        rowId: String(row?.rowId ?? '').trim() || null,
+        equipmentType: String(type ?? row?.type ?? '').trim() || null
+    };
 }
 
 function resolveBoundaryDepth(row = {}) {
@@ -569,11 +644,22 @@ export function resolveBoundaryEquipmentEffects(boundaryDepth, equipmentRows = [
                 ...createValidationWarning(
                     EQUIPMENT_WARNING_NO_SEAL_BEHAVIOR_AT_BOUNDARY,
                     'Equipment row is present at a topology boundary but does not define bore/annulus seal behavior.',
-                    row
+                    rule.row
                 ),
                 depth
             });
         }
+
+        resolveDefinitionConnectionContributions(rule.definition, rule.row, rule.hookContext)
+            .forEach((connectionContribution) => {
+                const normalizedContribution = normalizeConnectionContribution(
+                    connectionContribution,
+                    rule.row,
+                    rule.type
+                );
+                if (!normalizedContribution) return;
+                effects.connectionContributions.push(normalizedContribution);
+            });
     });
 
     return effects;

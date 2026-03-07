@@ -27,4 +27,16 @@ describe('PlotSettings camera-control precedence contract', () => {
     expect(source).toContain('v-model="canvasWidthModel"');
     expect(source).toContain('v-model="xExaggerationModel"');
   });
+
+  it('exposes a directional-only label scale control backed by the view config store', () => {
+    const source = readPlotSettingsSource();
+
+    expect(source).toContain('const directionalLabelScaleModel = createBufferedNumberModel(() => config.directionalLabelScale);');
+    expect(source).toContain('function handleDirectionalLabelScaleSliderChange(eventOrValue) {');
+    expect(source).toContain('function handleDirectionalLabelScaleSliderCommit(eventOrValue) {');
+    expect(source).toContain('viewConfigStore.setDirectionalLabelScale(nextValue);');
+    expect(source).toContain('v-model="directionalLabelScaleModel"');
+    expect(source).toContain('data-i18n="ui.directional_label_scale"');
+    expect(source).toContain('data-i18n="ui.directional_label_scale_hint"');
+  });
 });

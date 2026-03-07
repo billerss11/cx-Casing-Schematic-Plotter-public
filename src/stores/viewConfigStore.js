@@ -20,8 +20,11 @@ import {
     resolveDirectionalSvgWidthFromMultiplier,
     resolveDirectionalWidthMultiplierFromSvgWidth
 } from '@/utils/directionalSizing.js';
+import {
+    DEFAULT_DIRECTIONAL_LABEL_SCALE,
+    normalizeDirectionalLabelScale
+} from '@/utils/directionalLabelScale.js';
 import { clampZoom } from '@/utils/svgTransformMath.js';
-import { logLabelScaleDiagnostic } from '@/utils/diagnostics.js';
 
 const MIN_CANVAS_WIDTH_MULTIPLIER = 0.1;
 const DEFAULT_CANVAS_WIDTH_MULTIPLIER = 1.0;
@@ -76,6 +79,7 @@ export function createDefaultViewConfig() {
         annotationToolMode: USER_ANNOTATION_TOOL_MODE_SELECT,
         topologyUseOpenHoleSource: false,
         xExaggeration: 1.0,
+        directionalLabelScale: DEFAULT_DIRECTIONAL_LABEL_SCALE,
         intervalCalloutStandoffPx: DEFAULT_INTERVAL_CALLOUT_STANDOFF_PX,
         directionalCasingArrowMode: DIRECTIONAL_CASING_ARROW_MODE_NORMAL_LOCKED,
         verticalSectionMode: DEFAULT_VERTICAL_SECTION_MODE,
@@ -139,6 +143,8 @@ function normalizeDirectionalCameraScale(value, fallback = 1) {
 
 function createDefaultViewUiState() {
     return {
+        cachedVerticalViewportConfig: null,
+        hasVerticalViewportMemory: false,
         cachedDirectionalWidth: DIRECTIONAL_DEFAULT_CANVAS_WIDTH_MULTIPLIER,
         hasDirectionalWidthMemory: false,
         cachedDirectionalViewportConfig: null,
@@ -270,19 +276,6 @@ export const useViewConfigStore = defineStore('viewConfig', () => {
     const config = reactive(createDefaultViewConfig());
     const uiState = reactive(createDefaultViewUiState());
 
-    function buildModeLayoutSnapshot() {
-        return {
-            viewMode: normalizeViewMode(config.viewMode),
-            figHeight: Number(config.figHeight),
-            canvasWidthMultiplier: Number(config.canvasWidthMultiplier),
-            lockAspectRatio: config.lockAspectRatio === true,
-            widthMultiplier: Number(config.widthMultiplier),
-            xExaggeration: Number(config.xExaggeration),
-            hasDirectionalAspectRatioMeasurement: uiState.hasDirectionalAspectRatioMeasurement === true,
-            directionalDataAspectRatio: Number(uiState.directionalDataAspectRatio)
-        };
-    }
-
     function normalizeMetricsDelta(value, fallback = 1) {
         const parsed = Number(value);
         if (!Number.isFinite(parsed)) return fallback;
@@ -365,8 +358,11 @@ export const useViewConfigStore = defineStore('viewConfig', () => {
 
     function setConfigValue(key, value) {
         if (!key || !SUPPORTED_VIEW_CONFIG_KEYS.has(key)) return false;
-        if (Object.is(config[key], value)) return false;
-        config[key] = value;
+        const normalizedValue = key === 'directionalLabelScale'
+            ? normalizeDirectionalLabelScale(value, config.directionalLabelScale)
+            : value;
+        if (Object.is(config[key], normalizedValue)) return false;
+        config[key] = normalizedValue;
         return true;
     }
 
@@ -547,8 +543,11 @@ export const useViewConfigStore = defineStore('viewConfig', () => {
         const changedKeys = [];
         Object.entries(patch).forEach(([key, value]) => {
             if (!SUPPORTED_VIEW_CONFIG_KEYS.has(key)) return;
-            if (Object.is(config[key], value)) return;
-            config[key] = value;
+            const normalizedValue = key === 'directionalLabelScale'
+                ? normalizeDirectionalLabelScale(value, config.directionalLabelScale)
+                : value;
+            if (Object.is(config[key], normalizedValue)) return;
+            config[key] = normalizedValue;
             changedKeys.push(key);
         });
 
@@ -700,6 +699,42 @@ export const useViewConfigStore = defineStore('viewConfig', () => {
         return uiState.cachedDirectionalViewportConfig;
     }
 
+    function rememberVerticalViewportConfig(source = config) {
+        const parsedFigureHeight = parseOptionalNumber(source?.figHeight);
+        const fallbackFigureHeight = Number.isFinite(Number(config.figHeight))
+            ? Number(config.figHeight)
+            : DIRECTIONAL_MIN_FIGURE_HEIGHT;
+        const figHeight = Math.max(
+            DIRECTIONAL_MIN_FIGURE_HEIGHT,
+            Math.round(Number.isFinite(parsedFigureHeight) ? parsedFigureHeight : fallbackFigureHeight)
+        );
+        const canvasWidthMultiplier = normalizeCanvasWidthMultiplierForMode(
+            source?.canvasWidthMultiplier,
+            'vertical',
+            config.canvasWidthMultiplier
+        );
+
+        uiState.cachedVerticalViewportConfig = {
+            figHeight,
+            canvasWidthMultiplier
+        };
+        uiState.hasVerticalViewportMemory = true;
+        return uiState.cachedVerticalViewportConfig;
+    }
+
+    function restoreVerticalViewportConfig() {
+        if (uiState.hasVerticalViewportMemory !== true || !uiState.cachedVerticalViewportConfig) {
+            return false;
+        }
+
+        const snapshot = uiState.cachedVerticalViewportConfig;
+        updateConfig({
+            figHeight: snapshot.figHeight,
+            canvasWidthMultiplier: snapshot.canvasWidthMultiplier
+        });
+        return true;
+    }
+
     function restoreDirectionalViewportConfig() {
         if (uiState.hasDirectionalViewportMemory !== true || !uiState.cachedDirectionalViewportConfig) {
             return false;
@@ -748,7 +783,6 @@ export const useViewConfigStore = defineStore('viewConfig', () => {
     function syncDirectionalCanvasWidthFromFigureHeight() {
         if (normalizeViewMode(config.viewMode) !== 'directional' || config.lockAspectRatio !== true) return;
         if (uiState.hasDirectionalAspectRatioMeasurement !== true) return;
-        const beforeMultiplier = Number(config.canvasWidthMultiplier);
         const svgWidth = resolveDirectionalSvgWidthFromHeight(
             config.figHeight,
             resolveDirectionalDataAspectRatio()
@@ -760,12 +794,6 @@ export const useViewConfigStore = defineStore('viewConfig', () => {
         const multiplier = Math.round(rawMultiplier * 100) / 100;
         setConfigValue('canvasWidthMultiplier', multiplier);
         rememberDirectionalCanvasWidth(multiplier);
-        logLabelScaleDiagnostic('store-sync-directional-width-from-height', {
-            ...buildModeLayoutSnapshot(),
-            svgWidth,
-            beforeMultiplier,
-            nextMultiplier: multiplier
-        });
     }
 
     function setCanvasWidthForMode(mode, value, fallback = config.canvasWidthMultiplier) {
@@ -820,13 +848,10 @@ export const useViewConfigStore = defineStore('viewConfig', () => {
     function setViewMode(value) {
         const previousMode = normalizeViewMode(config.viewMode);
         const nextMode = normalizeViewMode(value);
-        logLabelScaleDiagnostic('store-set-view-mode-start', {
-            previousMode,
-            requestedMode: value,
-            nextMode,
-            snapshot: buildModeLayoutSnapshot()
-        });
 
+        if (previousMode === 'vertical') {
+            rememberVerticalViewportConfig(config);
+        }
         if (previousMode === 'directional') {
             rememberDirectionalViewportConfig(config);
         }
@@ -834,26 +859,27 @@ export const useViewConfigStore = defineStore('viewConfig', () => {
         setConfigValue('viewMode', nextMode);
         maybeApplyDirectionalCanvasWidthDefault(previousMode, nextMode);
 
-        const restoredDirectionalViewport = (
-            previousMode !== 'directional' &&
-            nextMode === 'directional' &&
-            restoreDirectionalViewportConfig()
-        );
-        if (restoredDirectionalViewport) {
+        if (previousMode !== 'directional' && nextMode === 'directional' && restoreDirectionalViewportConfig()) {
             suppressNextDirectionalAutoFit();
         }
-        logLabelScaleDiagnostic('store-set-view-mode-end', {
-            previousMode,
-            nextMode,
-            restoredDirectionalViewport,
-            snapshot: buildModeLayoutSnapshot()
-        });
+        if (previousMode !== 'vertical' && nextMode === 'vertical') {
+            restoreVerticalViewportConfig();
+        }
         return config.viewMode;
     }
 
     function setXExaggeration(value) {
         const normalized = normalizeXExaggeration(value, config.xExaggeration);
         setConfigValue('xExaggeration', normalized);
+        return normalized;
+    }
+
+    function setDirectionalLabelScale(value) {
+        const normalized = normalizeDirectionalLabelScale(
+            value,
+            config.directionalLabelScale
+        );
+        setConfigValue('directionalLabelScale', normalized);
         return normalized;
     }
 
@@ -873,17 +899,11 @@ export const useViewConfigStore = defineStore('viewConfig', () => {
     }
 
     function setDirectionalDataAspectRatio(value) {
-        const previousAspectRatio = Number(uiState.directionalDataAspectRatio);
         const numeric = Number(value);
         const safeAspectRatio = Number.isFinite(numeric) && numeric > 0 ? numeric : 1;
         uiState.hasDirectionalAspectRatioMeasurement = true;
         if (Object.is(uiState.directionalDataAspectRatio, safeAspectRatio)) return safeAspectRatio;
         uiState.directionalDataAspectRatio = safeAspectRatio;
-        logLabelScaleDiagnostic('store-set-directional-aspect-ratio', {
-            previousAspectRatio,
-            nextAspectRatio: safeAspectRatio,
-            snapshot: buildModeLayoutSnapshot()
-        });
         syncDirectionalCanvasWidthFromFigureHeight();
         return safeAspectRatio;
     }
@@ -1017,6 +1037,7 @@ export const useViewConfigStore = defineStore('viewConfig', () => {
         setVerticalSectionSelection,
         setViewMode,
         setXExaggeration,
+        setDirectionalLabelScale,
         setIntervalCalloutStandoffPx,
         setDirectionalCasingArrowMode,
         syncVerticalSectionControlsFromConfig

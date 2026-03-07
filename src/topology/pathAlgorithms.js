@@ -92,6 +92,8 @@ function appendAdjacencyEdge(adjacency, fromNodeId, toNodeId, edge) {
 }
 
 function resolveEdgeDirection(edge, traversalPolicy) {
+    const explicitDirection = normalizeTraversalDirection(edge?.direction, '');
+    if (explicitDirection) return explicitDirection;
     const edgeKind = String(edge?.kind ?? '').trim().toLowerCase();
     return traversalPolicy.edgeDirectionsByKind[edgeKind]
         ?? traversalPolicy.defaultEdgeDirection;

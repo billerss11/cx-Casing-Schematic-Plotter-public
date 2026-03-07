@@ -1,14 +1,15 @@
 import {
   normalizeEquipmentTypeKey,
+  resolveEquipmentRenderConfig,
   resolveEquipmentTypeLabel
 } from '@/topology/equipmentDefinitions/index.js';
 
-const PACKER_LIKE_TYPE_KEYS = Object.freeze(new Set(['packer', 'bridge-plug']));
+const RENDER_FAMILY_PACKER_LIKE = 'packerLike';
+const RENDER_FAMILY_INLINE_VALVE = 'inlineValve';
 const SAFETY_VALVE_TYPE_KEY = 'safety-valve';
 
 export function isPackerLikeEquipmentType(typeValue) {
-  const typeKey = normalizeEquipmentTypeKey(typeValue);
-  return PACKER_LIKE_TYPE_KEYS.has(typeKey);
+  return resolveEquipmentRenderConfig(typeValue)?.family === RENDER_FAMILY_PACKER_LIKE;
 }
 
 export function isSafetyValveEquipmentType(typeValue) {
@@ -17,10 +18,13 @@ export function isSafetyValveEquipmentType(typeValue) {
 
 export function resolveEquipmentTypeSemantics(typeValue) {
   const typeKey = normalizeEquipmentTypeKey(typeValue);
+  const renderFamily = resolveEquipmentRenderConfig(typeValue)?.family ?? 'unknown';
   return {
     typeKey,
     label: resolveEquipmentTypeLabel(typeValue),
-    isPackerLike: PACKER_LIKE_TYPE_KEYS.has(typeKey),
+    renderFamily,
+    isPackerLike: renderFamily === RENDER_FAMILY_PACKER_LIKE,
+    isInlineValve: renderFamily === RENDER_FAMILY_INLINE_VALVE,
     isSafetyValve: typeKey === SAFETY_VALVE_TYPE_KEY
   };
 }

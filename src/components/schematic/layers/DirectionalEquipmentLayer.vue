@@ -148,7 +148,7 @@ const equipmentShapes = computed(() => {
           });
         });
       }
-    } else if (semantics.isSafetyValve) {
+    } else if (semantics.isInlineValve) {
       const isOrphaned = equip.tubingParentIndex === null;
       const tubingID = Number(equip.tubingParentID);
       if (!Number.isFinite(tubingID)) return;

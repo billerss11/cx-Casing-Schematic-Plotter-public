@@ -82,4 +82,27 @@ describe('pathAlgorithms', () => {
     expect(result.minFailureCostToSurface).toBe(null);
     expect(result.minCostPathEdgeIds).toEqual([]);
   });
+
+  it('prefers explicit edge direction over traversal policy defaults', () => {
+    const edges = [
+      {
+        edgeId: 'edge:a-b',
+        from: 'node:A',
+        to: 'node:B',
+        cost: 0,
+        direction: 'forward'
+      }
+    ];
+
+    expect(computeActiveFlowNodeIds(['node:B'], edges)).toEqual(['node:B']);
+
+    const result = computeMinimumFailurePath(['node:A'], 'node:B', edges, {
+      traversalPolicy: {
+        defaultEdgeDirection: 'reverse'
+      }
+    });
+
+    expect(result.minFailureCostToSurface).toBe(0);
+    expect(result.minCostPathEdgeIds).toEqual(['edge:a-b']);
+  });
 });

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from 'vue';
+import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref } from 'vue';
 import { clamp, formatDepthValue, parseOptionalNumber } from '@/utils/general.js';
 import { useSchematicScales } from '@/composables/useSchematicScales.js';
 import { useSchematicStackSlices } from '@/composables/useSchematicStackSlices.js';
@@ -54,6 +54,7 @@ import FluidLayer from './layers/FluidLayer.vue';
 import FluidLabelLayer from './layers/FluidLabelLayer.vue';
 import PlugLayer from './layers/PlugLayer.vue';
 import CasingLayer from './layers/CasingLayer.vue';
+import VerticalOpenHoleBoundaryLayer from './layers/VerticalOpenHoleBoundaryLayer.vue';
 import CasingLabelLayer from './layers/CasingLabelLayer.vue';
 import MarkerLayer from './layers/MarkerLayer.vue';
 import HorizontalLineLayer from './layers/HorizontalLineLayer.vue';
@@ -65,7 +66,6 @@ import PatternDefs from './layers/PatternDefs.vue';
 import UserAnnotationLayer from './layers/UserAnnotationLayer.vue';
 import { collectVerticalHatchPatterns } from './layers/verticalHatchPatterns.js';
 import SchematicPlotTooltip from './SchematicPlotTooltip.vue';
-import { logLabelScaleDiagnostic } from '@/utils/diagnostics.js';
 
 const props = defineProps({
   projectData: {
@@ -148,7 +148,6 @@ const VERTICAL_WHEEL_ZOOM_MAX = 4;
 let resizeObserver = null;
 let hasGlobalInteractionListeners = false;
 let lastTooltipHoverAt = 0;
-let lastVerticalCanvasMetricSignature = '';
 
 const casingRows = computed(() => (
   Array.isArray(props.projectData?.casingData) ? props.projectData.casingData : []
@@ -399,49 +398,6 @@ const displayScaleValue = computed(() => {
 });
 const displayWidthValue = computed(() => Math.round(width.value * displayScaleValue.value));
 const displayHeightValue = computed(() => Math.round(height.value * displayScaleValue.value));
-
-watch(
-  [
-    () => Number(containerClientWidth.value),
-    () => Number(containerClientHeight.value),
-    () => Number(width.value),
-    () => Number(height.value),
-    () => Number(displayWidthValue.value),
-    () => Number(displayHeightValue.value),
-    () => Number(figHeightValue.value),
-    () => Number(props.config?.canvasWidthMultiplier),
-    () => String(props.config?.viewMode ?? '')
-  ],
-  ([
-    containerWidth,
-    containerHeight,
-    svgWidth,
-    svgHeight,
-    displayWidth,
-    displayHeight,
-    figHeight,
-    canvasWidthMultiplier,
-    viewMode
-  ]) => {
-    const payload = {
-      containerWidth,
-      containerHeight,
-      svgWidth,
-      svgHeight,
-      displayWidth,
-      displayHeight,
-      figHeight,
-      canvasWidthMultiplier,
-      viewMode
-    };
-
-    const signature = JSON.stringify(payload);
-    if (signature === lastVerticalCanvasMetricSignature) return;
-    lastVerticalCanvasMetricSignature = signature;
-    logLabelScaleDiagnostic('vertical-canvas-metrics', payload);
-  },
-  { immediate: true }
-);
 
 const isDepthCursorEnabled = computed(() => props.config?.showDepthCursor === true);
 const plotLeftX = computed(() => xScale.value(-xHalf.value));
@@ -939,7 +895,7 @@ function handleCanvasPointerDown(event) {
   if (isTextInputLikeElement(target)) return;
   if (target instanceof Element && target.closest('.user-annotation-layer__editor')) return;
   focusCanvasContainer();
-  if (hasInteractiveSchematicTarget(target)) return;
+  if (!isCameraTransformEnabled.value && hasInteractiveSchematicTarget(target)) return;
   startCameraPan(event);
 }
 
@@ -1228,6 +1184,17 @@ onBeforeUnmount(() => {
         :show-min-cost-path="props.topologyOverlayOptions?.showMinCostPath !== false"
         :show-spof="props.topologyOverlayOptions?.showSpof !== false"
         :selected-node-ids="props.topologyOverlaySelection?.selectedNodeIds || []"
+      />
+
+      <VerticalOpenHoleBoundaryLayer
+        :slices="slices"
+        :casing-data="casingRows"
+        :x-scale="xScale"
+        :y-scale="yScale"
+        :diameter-scale="diameterScaleValue"
+        @select-pipe="handleSelectPipe"
+        @hover-pipe="handleHoverPipe"
+        @leave-pipe="handleLeavePipe"
       />
 
       <CasingLayer

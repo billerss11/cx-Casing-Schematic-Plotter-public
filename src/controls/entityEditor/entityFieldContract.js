@@ -1,11 +1,12 @@
 import { getEnumOptions } from '@/app/i18n.js';
 import { FLUID_PLACEMENT_AUTO_OPTIONS } from '@/constants/index.js';
 import {
-  EQUIPMENT_ACTUATION_STATE_OPTIONS,
-  EQUIPMENT_INTEGRITY_STATUS_OPTIONS,
-  EQUIPMENT_SEAL_OVERRIDE_OPTIONS,
   EQUIPMENT_TYPE_OPTIONS
 } from '@/topology/equipmentMetadata.js';
+import {
+  listEquipmentDefinitions,
+  resolveEquipmentEditorFields
+} from '@/topology/equipmentDefinitions/index.js';
 import {
   SOURCE_KIND_FORMATION_INFLOW,
   SOURCE_KIND_LEAK,
@@ -133,33 +134,84 @@ function createFieldContract(field, controlType, options = {}) {
   });
 }
 
-function toTitleCaseLabel(value) {
-  return String(value ?? '')
-    .trim()
-    .replace(/[_-]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .replace(/\b\w/g, (char) => char.toUpperCase());
-}
-
-function buildEquipmentRuleOptions(sourceOptions, defaultLabel) {
-  const options = Array.isArray(sourceOptions) ? sourceOptions : [];
-  const uniqueValues = [...new Set(options.map((option) => String(option ?? '').trim()))];
-  const values = uniqueValues.filter((value) => value.length > 0);
-  return [
-    { label: defaultLabel, value: '' },
-    ...values.map((value) => ({
-      label: toTitleCaseLabel(value),
-      value
-    }))
-  ];
-}
-
 const READ_ONLY_ROW_ID_FIELD = Object.freeze(
   createFieldContract('rowId', ENTITY_EDITOR_CONTROL_TYPES.text, {
     dataTabAccess: ENTITY_FIELD_ACCESS.readOnly,
     tableAccess: ENTITY_FIELD_ACCESS.hidden
   })
 );
+
+const EQUIPMENT_COMMON_DATA_FIELD_CONTRACTS = Object.freeze([
+  createFieldContract('depth', ENTITY_EDITOR_CONTROL_TYPES.number),
+  createFieldContract('type', ENTITY_EDITOR_CONTROL_TYPES.select, {
+    options: () => EQUIPMENT_TYPE_OPTIONS
+  }),
+  createFieldContract('attachToDisplay', ENTITY_EDITOR_CONTROL_TYPES.select, {
+    options: ({ context }) => buildEquipmentAttachOptions(context?.casingRows, context?.tubingRows)
+      .map((option) => option.value)
+  })
+]);
+
+const EQUIPMENT_TRAILING_DATA_FIELD_CONTRACTS = Object.freeze([
+  createFieldContract('label', ENTITY_EDITOR_CONTROL_TYPES.text),
+  READ_ONLY_ROW_ID_FIELD,
+  createFieldContract('attachToHostType', ENTITY_EDITOR_CONTROL_TYPES.text, {
+    dataTabAccess: ENTITY_FIELD_ACCESS.readOnly,
+    tableAccess: ENTITY_FIELD_ACCESS.hidden,
+    showWhen: ({ rowData }) => normalizeToken(rowData?.attachToHostType).length > 0
+  }),
+  createFieldContract('attachToId', ENTITY_EDITOR_CONTROL_TYPES.text, {
+    dataTabAccess: ENTITY_FIELD_ACCESS.readOnly,
+    tableAccess: ENTITY_FIELD_ACCESS.hidden,
+    showWhen: ({ rowData }) => normalizeToken(rowData?.attachToId).length > 0
+  })
+]);
+
+function mergeEquipmentEditorFieldContracts(fieldSets = []) {
+  const merged = [];
+  const fieldToIndexMap = new Map();
+
+  toSafeArray(fieldSets).flat().forEach((fieldDefinition) => {
+    if (!fieldDefinition || typeof fieldDefinition !== 'object') return;
+    const field = normalizeToken(fieldDefinition.field);
+    if (!field) return;
+
+    const existingIndex = fieldToIndexMap.get(field);
+    if (Number.isInteger(existingIndex)) {
+      merged[existingIndex] = fieldDefinition;
+      return;
+    }
+
+    fieldToIndexMap.set(field, merged.length);
+    merged.push(fieldDefinition);
+  });
+
+  return merged;
+}
+
+function resolveEquipmentDomainFieldContracts(options = {}) {
+  const rowData = options?.rowData ?? {};
+  const definitionContext = {
+    rowData,
+    context: options?.context ?? null
+  };
+  const explicitEquipmentType = rowData?.typeKey ?? rowData?.type ?? null;
+  const definitionFieldSets = explicitEquipmentType
+    ? [resolveEquipmentEditorFields(explicitEquipmentType, definitionContext)]
+    : listEquipmentDefinitions().map((definition) => (
+      resolveEquipmentEditorFields(definition?.schema?.key ?? null, definitionContext)
+    ));
+  const dynamicFieldContracts = mergeEquipmentEditorFieldContracts(definitionFieldSets);
+  const trailingDynamicFields = dynamicFieldContracts.filter((fieldDefinition) => fieldDefinition?.field === 'sealByVolume');
+  const inlineDynamicFields = dynamicFieldContracts.filter((fieldDefinition) => fieldDefinition?.field !== 'sealByVolume');
+
+  return Object.freeze([
+    ...EQUIPMENT_COMMON_DATA_FIELD_CONTRACTS,
+    ...inlineDynamicFields,
+    ...EQUIPMENT_TRAILING_DATA_FIELD_CONTRACTS,
+    ...trailingDynamicFields
+  ]);
+}
 
 const DOMAIN_FIELD_CONTRACTS = Object.freeze({
   casing: Object.freeze([
@@ -203,61 +255,6 @@ const DOMAIN_FIELD_CONTRACTS = Object.freeze({
     createFieldContract('top', ENTITY_EDITOR_CONTROL_TYPES.number),
     createFieldContract('bottom', ENTITY_EDITOR_CONTROL_TYPES.number),
     READ_ONLY_ROW_ID_FIELD
-  ]),
-  equipment: Object.freeze([
-    createFieldContract('depth', ENTITY_EDITOR_CONTROL_TYPES.number),
-    createFieldContract('type', ENTITY_EDITOR_CONTROL_TYPES.select, {
-      options: () => EQUIPMENT_TYPE_OPTIONS
-    }),
-    createFieldContract('attachToDisplay', ENTITY_EDITOR_CONTROL_TYPES.select, {
-      options: ({ context }) => buildEquipmentAttachOptions(context?.casingRows, context?.tubingRows)
-        .map((option) => option.value)
-    }),
-    createFieldContract('actuationState', ENTITY_EDITOR_CONTROL_TYPES.select, {
-      tableAccess: ENTITY_FIELD_ACCESS.hidden,
-      options: () => buildEquipmentRuleOptions(
-        EQUIPMENT_ACTUATION_STATE_OPTIONS,
-        'Use equipment default'
-      )
-    }),
-    createFieldContract('integrityStatus', ENTITY_EDITOR_CONTROL_TYPES.select, {
-      tableAccess: ENTITY_FIELD_ACCESS.hidden,
-      options: () => buildEquipmentRuleOptions(
-        EQUIPMENT_INTEGRITY_STATUS_OPTIONS,
-        'Use equipment default'
-      )
-    }),
-    createFieldContract('boreSeal', ENTITY_EDITOR_CONTROL_TYPES.select, {
-      tableAccess: ENTITY_FIELD_ACCESS.hidden,
-      options: () => buildEquipmentRuleOptions(
-        EQUIPMENT_SEAL_OVERRIDE_OPTIONS,
-        'Use equipment default'
-      )
-    }),
-    createFieldContract('annularSeal', ENTITY_EDITOR_CONTROL_TYPES.select, {
-      tableAccess: ENTITY_FIELD_ACCESS.hidden,
-      options: () => buildEquipmentRuleOptions(
-        EQUIPMENT_SEAL_OVERRIDE_OPTIONS,
-        'Use equipment default'
-      )
-    }),
-    createFieldContract('label', ENTITY_EDITOR_CONTROL_TYPES.text),
-    READ_ONLY_ROW_ID_FIELD,
-    createFieldContract('attachToHostType', ENTITY_EDITOR_CONTROL_TYPES.text, {
-      dataTabAccess: ENTITY_FIELD_ACCESS.readOnly,
-      tableAccess: ENTITY_FIELD_ACCESS.hidden,
-      showWhen: ({ rowData }) => normalizeToken(rowData?.attachToHostType).length > 0
-    }),
-    createFieldContract('attachToId', ENTITY_EDITOR_CONTROL_TYPES.text, {
-      dataTabAccess: ENTITY_FIELD_ACCESS.readOnly,
-      tableAccess: ENTITY_FIELD_ACCESS.hidden,
-      showWhen: ({ rowData }) => normalizeToken(rowData?.attachToId).length > 0
-    }),
-    createFieldContract('sealByVolume', ENTITY_EDITOR_CONTROL_TYPES.json, {
-      dataTabAccess: ENTITY_FIELD_ACCESS.readOnly,
-      tableAccess: ENTITY_FIELD_ACCESS.hidden,
-      showWhen: ({ rowData }) => rowData?.sealByVolume && typeof rowData.sealByVolume === 'object'
-    })
   ]),
   lines: Object.freeze([
     createFieldContract('depth', ENTITY_EDITOR_CONTROL_TYPES.number),
@@ -439,8 +436,12 @@ export function resolveEntityEditorDomainKey(entityType) {
   return ENTITY_TYPE_TO_DOMAIN_KEY[token] ?? ENTITY_TYPE_TO_DOMAIN_KEY[token.toLowerCase()] ?? null;
 }
 
-export function resolveDomainFieldContracts(domainKey) {
-  return DOMAIN_FIELD_CONTRACTS[normalizeToken(domainKey)] ?? [];
+export function resolveDomainFieldContracts(domainKey, options = {}) {
+  const normalizedDomainKey = normalizeToken(domainKey);
+  if (normalizedDomainKey === 'equipment') {
+    return resolveEquipmentDomainFieldContracts(options);
+  }
+  return DOMAIN_FIELD_CONTRACTS[normalizedDomainKey] ?? [];
 }
 
 function shouldIncludeDataTabField(definition, sourceRow, context, includeReadOnly) {
@@ -482,7 +483,10 @@ export function resolveDataTabFieldDefinitions({
 } = {}) {
   const sourceRow = rowData && typeof rowData === 'object' ? rowData : {};
   const domainKey = resolveEntityEditorDomainKey(entityType);
-  const domainContracts = resolveDomainFieldContracts(domainKey);
+  const domainContracts = resolveDomainFieldContracts(domainKey, {
+    rowData: sourceRow,
+    context
+  });
 
   return domainContracts
     .filter((definition) => shouldIncludeDataTabField(definition, sourceRow, context, includeReadOnly))

@@ -2,6 +2,27 @@ function toSafeArray(value) {
     return Array.isArray(value) ? value : [];
 }
 
+const EDGE_DIRECTION_BIDIRECTIONAL = 'bidirectional';
+const EDGE_DIRECTION_FORWARD = 'forward';
+const EDGE_DIRECTION_REVERSE = 'reverse';
+
+function normalizeTraversalDirection(value, fallbackDirection = EDGE_DIRECTION_BIDIRECTIONAL) {
+    const token = String(value ?? '').trim().toLowerCase();
+    if (token === EDGE_DIRECTION_FORWARD) return EDGE_DIRECTION_FORWARD;
+    if (token === EDGE_DIRECTION_REVERSE) return EDGE_DIRECTION_REVERSE;
+    if (token === EDGE_DIRECTION_BIDIRECTIONAL) return EDGE_DIRECTION_BIDIRECTIONAL;
+    return fallbackDirection;
+}
+
+function resolveEdgeDirection(edge = {}) {
+    const explicitDirection = normalizeTraversalDirection(edge?.direction, '');
+    if (explicitDirection) return explicitDirection;
+
+    const edgeKind = String(edge?.kind ?? '').trim().toLowerCase();
+    if (edgeKind === 'termination') return EDGE_DIRECTION_FORWARD;
+    return EDGE_DIRECTION_BIDIRECTIONAL;
+}
+
 function normalizeRowId(value) {
     const normalized = String(value ?? '').trim();
     return normalized || null;
@@ -110,9 +131,14 @@ function buildAdjacency(edges = [], excludedEdgeIds = new Set()) {
         if (!edgeId || excludedEdgeIds.has(edgeId)) return;
         const cost = Number(edge?.cost);
         if (cost !== 0 && cost !== 1) return;
+        const direction = resolveEdgeDirection(edge);
 
-        append(edge.from, edge.to, edge);
-        append(edge.to, edge.from, edge);
+        if (direction === EDGE_DIRECTION_FORWARD || direction === EDGE_DIRECTION_BIDIRECTIONAL) {
+            append(edge.from, edge.to, edge);
+        }
+        if (direction === EDGE_DIRECTION_REVERSE || direction === EDGE_DIRECTION_BIDIRECTIONAL) {
+            append(edge.to, edge.from, edge);
+        }
     });
 
     return adjacency;
@@ -278,7 +304,7 @@ export function evaluateBarrierEnvelopes({
     return {
         mode: 'heuristic_alternative_path_excluding_primary_edges',
         primary: {
-            minFailureCostToSurface: Number.isFinite(Number(primaryMinFailureCost))
+            minFailureCostToSurface: Number.isFinite(primaryMinFailureCost)
                 ? Number(primaryMinFailureCost)
                 : null,
             pathEdgeIds: primaryEdges,
@@ -286,7 +312,7 @@ export function evaluateBarrierEnvelopes({
             elementCount: primaryElementIds.size
         },
         secondary: {
-            minFailureCostToSurface: Number.isFinite(Number(secondaryPath.minFailureCostToSurface))
+            minFailureCostToSurface: Number.isFinite(secondaryPath.minFailureCostToSurface)
                 ? Number(secondaryPath.minFailureCostToSurface)
                 : null,
             pathEdgeIds: toSafeArray(secondaryPath.pathEdgeIds),

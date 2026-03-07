@@ -37,6 +37,7 @@ const replaceProjectFileInput = ref(null);
 const appendProjectFileInput = ref(null);
 const isDataManagementVisible = ref(false);
 const isProjectDetailsDialogVisible = ref(false);
+const isNewProjectConfirmVisible = ref(false);
 const isNewWellDialogVisible = ref(false);
 const isExcelExportDialogVisible = ref(false);
 const isReplaceProjectConfirmVisible = ref(false);
@@ -69,6 +70,9 @@ const labels = computed(() => {
     dataManagement: t('ui.data_management'),
     projectDetails: t('ui.project_details'),
     projectDetailsTitle: t('ui.project_details_title'),
+    newProject: t('ui.project_new'),
+    newProjectConfirmTitle: t('ui.project_new_confirm_title'),
+    newProjectConfirmMessage: t('ui.project_new_confirm_body'),
     projectNameLabel: t('ui.project_name_label'),
     authorNameLabel: t('ui.author_name_label'),
     activeWellNameLabel: t('ui.active_well_name_label'),
@@ -100,6 +104,11 @@ const projectActionItems = computed(() => {
       command: handleSaveAs
     },
     { separator: true },
+    {
+      label: t('ui.project_new'),
+      icon: 'pi pi-file',
+      command: openNewProjectConfirm
+    },
     {
       label: t('ui.project_details'),
       icon: 'pi pi-pencil',
@@ -500,6 +509,22 @@ function confirmProjectDetails() {
   showAlert(t('alert.project_details_saved'), 'success');
 }
 
+function openNewProjectConfirm() {
+  isNewProjectConfirmVisible.value = true;
+}
+
+function closeNewProjectConfirm() {
+  isNewProjectConfirmVisible.value = false;
+}
+
+function confirmCreateBlankProject() {
+  const result = projectStore.createBlankProject();
+  if (!result?.ok) return;
+
+  closeNewProjectConfirm();
+  showAlert(t('alert.project_new_created'), 'success');
+}
+
 function openNewWellDialog() {
   newWellName.value = '';
   createWellAttempted.value = false;
@@ -725,6 +750,25 @@ onBeforeUnmount(() => {
         <div class="workspace-project-actions__dialog-footer">
           <Button text :label="labels.cancel" @click="closeProjectDetailsDialog" />
           <Button :label="labels.confirm" :disabled="!canSaveProjectDetails" @click="confirmProjectDetails" />
+        </div>
+      </template>
+    </Dialog>
+
+    <Dialog
+      v-model:visible="isNewProjectConfirmVisible"
+      modal
+      :draggable="false"
+      :header="labels.newProjectConfirmTitle"
+      :style="{ width: 'min(92vw, 30rem)' }"
+    >
+      <div class="workspace-project-actions__dialog-body">
+        <p class="workspace-project-actions__dialog-label">{{ labels.newProjectConfirmMessage }}</p>
+      </div>
+
+      <template #footer>
+        <div class="workspace-project-actions__dialog-footer">
+          <Button text :label="labels.cancel" @click="closeNewProjectConfirm" />
+          <Button :label="labels.confirm" @click="confirmCreateBlankProject" />
         </div>
       </template>
     </Dialog>

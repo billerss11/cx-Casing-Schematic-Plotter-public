@@ -191,42 +191,48 @@ onBeforeUnmount(() => {
         class="workspace-activity-shell__row workspace-activity-shell__row--secondary"
       >
         <WorkspaceProjectActions class="workspace-activity-shell__project-actions" />
-        <WorkspaceViewStateControls class="workspace-activity-shell__view-state-controls" />
-
-        <div class="workspace-activity-shell__utility-cluster">
+        <div class="workspace-activity-shell__mode-and-tools">
+          <WorkspaceViewStateControls class="workspace-activity-shell__view-state-controls" />
+          <span class="workspace-activity-shell__cluster-divider" aria-hidden="true"></span>
           <CanvasInteractionToolbar class="workspace-activity-shell__interaction-toolbar" />
+        </div>
 
-          <div class="workspace-activity-shell__dock-toggles">
-            <Button
-              type="button"
-              size="small"
-              :severity="isLeftDockVisible ? 'info' : 'secondary'"
-              :outlined="!isLeftDockVisible"
-              icon="pi pi-list"
-              :label="actionButtonLabels.hierarchy"
-              @click="toggleLeftDock"
-            />
+        <div class="workspace-activity-shell__dock-toggles" role="group" aria-label="Workspace panel visibility">
+          <Button
+            type="button"
+            size="small"
+            severity="secondary"
+            outlined
+            class="workspace-activity-shell__dock-toggle"
+            :class="{ 'workspace-activity-shell__dock-toggle--active': isLeftDockVisible }"
+            icon="pi pi-list"
+            :label="actionButtonLabels.hierarchy"
+            @click="toggleLeftDock"
+          />
 
-            <Button
-              type="button"
-              size="small"
-              :severity="isBottomDockVisible ? 'info' : 'secondary'"
-              :outlined="!isBottomDockVisible"
-              icon="pi pi-table"
-              :label="actionButtonLabels.dataTables"
-              @click="toggleBottomDock"
-            />
+          <Button
+            type="button"
+            size="small"
+            severity="secondary"
+            outlined
+            class="workspace-activity-shell__dock-toggle"
+            :class="{ 'workspace-activity-shell__dock-toggle--active': isBottomDockVisible }"
+            icon="pi pi-table"
+            :label="actionButtonLabels.dataTables"
+            @click="toggleBottomDock"
+          />
 
-            <Button
-              type="button"
-              size="small"
-              :severity="isRightDockVisible ? 'info' : 'secondary'"
-              :outlined="!isRightDockVisible"
-              icon="pi pi-sliders-v"
-              :label="actionButtonLabels.inspector"
-              @click="toggleRightDock"
-            />
-          </div>
+          <Button
+            type="button"
+            size="small"
+            severity="secondary"
+            outlined
+            class="workspace-activity-shell__dock-toggle"
+            :class="{ 'workspace-activity-shell__dock-toggle--active': isRightDockVisible }"
+            icon="pi pi-sliders-v"
+            :label="actionButtonLabels.inspector"
+            @click="toggleRightDock"
+          />
         </div>
       </div>
     </header>
@@ -350,10 +356,12 @@ onBeforeUnmount(() => {
 
 .workspace-activity-shell__row--secondary {
   border-top: 1px solid color-mix(in srgb, var(--line) 75%, transparent);
-  padding-top: 8px;
+  padding-top: 10px;
   justify-content: flex-start;
-  overflow-x: auto;
-  overflow-y: hidden;
+  align-items: center;
+  flex-wrap: wrap;
+  row-gap: 10px;
+  overflow: visible;
 }
 
 .workspace-activity-shell__title-block {
@@ -395,32 +403,52 @@ onBeforeUnmount(() => {
   margin-inline-start: 0;
 }
 
-.workspace-activity-shell__utility-cluster {
+.workspace-activity-shell__mode-and-tools {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  margin-inline-start: 0;
+  gap: 8px;
+  min-height: 46px;
+  padding: 5px 8px;
+  border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--panel-bg) 92%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-surface-elevated) 35%, transparent);
   flex-wrap: nowrap;
+  min-width: 0;
+}
+
+.workspace-activity-shell__cluster-divider {
+  width: 1px;
+  align-self: stretch;
+  background: color-mix(in srgb, var(--line) 72%, transparent);
+  border-radius: var(--radius-pill);
 }
 
 .workspace-activity-shell__dock-toggles {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 38px;
+  min-height: 46px;
   padding: 4px 6px;
   border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--panel-bg) 92%, transparent);
-  flex-wrap: wrap;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-surface-elevated) 35%, transparent);
+  flex-wrap: nowrap;
 }
 
-.workspace-activity-shell__dock-toggles :deep(.p-button) {
+.workspace-activity-shell__dock-toggles :deep(.workspace-activity-shell__dock-toggle.p-button) {
   min-height: 30px;
   flex: 0 0 auto;
 }
 
-.workspace-activity-shell__dock-toggles :deep(.p-button-label) {
+.workspace-activity-shell__dock-toggles :deep(.workspace-activity-shell__dock-toggle--active.p-button) {
+  border-color: color-mix(in srgb, var(--color-accent-primary-strong) 55%, transparent);
+  background: color-mix(in srgb, var(--color-accent-primary) 13%, transparent);
+  color: var(--color-accent-primary-strong);
+}
+
+.workspace-activity-shell__dock-toggles :deep(.workspace-activity-shell__dock-toggle.p-button .p-button-label) {
   white-space: nowrap;
 }
 
@@ -596,15 +624,20 @@ onBeforeUnmount(() => {
     margin-inline-start: 0;
   }
 
-  .workspace-activity-shell__utility-cluster {
+  .workspace-activity-shell__mode-and-tools {
     width: 100%;
     justify-content: flex-start;
     flex-wrap: wrap;
   }
 
+  .workspace-activity-shell__cluster-divider {
+    display: none;
+  }
+
   .workspace-activity-shell__dock-toggles {
     width: 100%;
     justify-content: flex-start;
+    flex-wrap: wrap;
   }
 
   .workspace-activity-shell__row--secondary {

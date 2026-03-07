@@ -93,16 +93,19 @@ const CASING_BASE_FIELDS = Object.freeze([
 const CASING_FIELDS = Object.freeze([
     ...CASING_BASE_FIELDS,
     createField('casingLabelFontSize', VISUAL_INSPECTOR_CONTROL_TYPES.number, 'ui.casing_label_font_size', {
+        defaultValue: 11,
         min: 8,
         max: 20,
         step: 1
     }),
     createField('depthLabelFontSize', VISUAL_INSPECTOR_CONTROL_TYPES.number, 'ui.depth_label_font_size', {
+        defaultValue: 9,
         min: 8,
         max: 20,
         step: 1
     }),
     createField('depthLabelOffset', VISUAL_INSPECTOR_CONTROL_TYPES.number, 'ui.depth_label_offset', {
+        defaultValue: 35,
         min: -60,
         max: 120,
         step: 1
@@ -134,6 +137,7 @@ const TRANSIENT_PIPE_FIELDS = Object.freeze([
         slider: ({ context }) => resolveGlobalDepthSliderRange(context, 0.1)
     }),
     createField('labelFontSize', VISUAL_INSPECTOR_CONTROL_TYPES.number, 'table.boxes.font_size', {
+        defaultValue: 11,
         min: 8,
         max: 20,
         step: 1
@@ -170,6 +174,7 @@ const VISUAL_INSPECTOR_SCHEMA = Object.freeze({
             options: ({ currentValue }) => buildColorOptions(currentValue)
         }),
         createField('fontSize', VISUAL_INSPECTOR_CONTROL_TYPES.number, 'table.lines.font_size', {
+            defaultValue: 11,
             min: 6,
             max: 72,
             step: 1
@@ -203,6 +208,7 @@ const VISUAL_INSPECTOR_SCHEMA = Object.freeze({
             options: ({ currentValue }) => buildColorOptions(currentValue)
         }),
         createField('fontSize', VISUAL_INSPECTOR_CONTROL_TYPES.number, 'table.fluids.font_size', {
+            defaultValue: 11,
             min: 6,
             max: 72,
             step: 1
@@ -239,6 +245,7 @@ const VISUAL_INSPECTOR_SCHEMA = Object.freeze({
             options: ({ currentValue }) => buildColorOptions(currentValue)
         }),
         createField('fontSize', VISUAL_INSPECTOR_CONTROL_TYPES.number, 'table.boxes.font_size', {
+            defaultValue: 12,
             min: 6,
             max: 72,
             step: 1

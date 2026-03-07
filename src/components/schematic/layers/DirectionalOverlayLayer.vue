@@ -1,5 +1,5 @@
 <script setup>
-import { computed, watch } from 'vue';
+import { computed } from 'vue';
 import {
   clamp,
   formatDepthValue,
@@ -13,6 +13,11 @@ import {
   resolveConfiguredIntervalCalloutStandoffPx,
   resolveVerticalLabelCollisions
 } from '@/utils/labelLayout.js';
+import {
+  DEFAULT_DIRECTIONAL_LABEL_SCALE,
+  normalizeDirectionalLabelScale,
+  resolveDirectionalLabelFontSize
+} from '@/utils/directionalLabelScale.js';
 import { t } from '@/app/i18n.js';
 import { isOpenHoleRow } from '@/app/domain.js';
 import { getStackAtDepth as getPhysicsStackAtDepth } from '@/composables/usePhysics.js';
@@ -25,7 +30,6 @@ import {
   resolveScreenFrameAtMD,
   normalizeXExaggeration
 } from './directionalProjection.js';
-import { logLabelScaleDiagnostic } from '@/utils/diagnostics.js';
 
 const ANNOTATION_SIDE_PADDING_PX = 12;
 const ANNOTATION_WELL_GAP_PX = 8;
@@ -130,7 +134,6 @@ const emit = defineEmits([
   'hover-box',
   'leave-box'
 ]);
-let lastDirectionalLabelDiagnosticSignature = '';
 
 function normalizePipeType(pipeType) {
   const normalized = String(pipeType ?? '').trim().toLowerCase();
@@ -311,6 +314,11 @@ const frameContext = computed(() => ({
   diameterScale: Number(props.diameterScale),
   maxProjectedRadius: Number(props.maxProjectedRadius)
 }));
+
+const directionalLabelScale = computed(() => normalizeDirectionalLabelScale(
+  props.config?.directionalLabelScale,
+  DEFAULT_DIRECTIONAL_LABEL_SCALE
+));
 
 const resolvedPhysicsContext = computed(() => {
   if (props.physicsContext?.__physicsContext) return props.physicsContext;
@@ -786,9 +794,13 @@ const depthAnnotations = computed(() => {
   rows.forEach((row) => {
     const sourceRow = sourceCasingRowsByIndex.value.get(Number(row?.__index)) || {};
     const depthLabelFontSizeRaw = Number(sourceRow?.depthLabelFontSize);
-    const depthLabelFontSize = Number.isFinite(depthLabelFontSizeRaw)
+    const baseDepthLabelFontSize = Number.isFinite(depthLabelFontSizeRaw)
       ? clamp(depthLabelFontSizeRaw, 8, 20)
       : 9;
+    const depthLabelFontSize = resolveDirectionalLabelFontSize(baseDepthLabelFontSize, {
+      fallbackSize: 9,
+      scale: directionalLabelScale.value
+    });
     const depthLabelOffsetRaw = Number(sourceRow?.depthLabelOffset);
     const depthLabelOffset = Number.isFinite(depthLabelOffsetRaw)
       ? clamp(depthLabelOffsetRaw, 10, 120)
@@ -863,7 +875,11 @@ function resolvePipeLabelFontSize(sourceRow, pipeType) {
   const raw = pipeType === 'casing'
     ? Number(sourceRow?.casingLabelFontSize)
     : Number(sourceRow?.labelFontSize);
-  return Number.isFinite(raw) ? clamp(raw, 8, 20) : 11;
+  const baseFontSize = Number.isFinite(raw) ? clamp(raw, 8, 20) : 11;
+  return resolveDirectionalLabelFontSize(baseFontSize, {
+    fallbackSize: 11,
+    scale: directionalLabelScale.value
+  });
 }
 
 function buildPipeLabelLines(row, sourceRow, units, pipeType) {
@@ -1183,26 +1199,6 @@ const casingLabelOverlays = computed(() => {
   });
 });
 
-watch(casingLabelOverlays, (nextLabels) => {
-  const rows = (Array.isArray(nextLabels) ? nextLabels : [])
-    .map((label) => ({
-      rowIndex: Number(label?.rowIndex),
-      fontSize: Number(label?.fontSize),
-      boxY: Number(label?.boxY),
-      boxHeight: Number(label?.boxHeight),
-      primaryText: String(label?.textRows?.[0]?.text ?? '')
-    }));
-
-  const signature = JSON.stringify(rows);
-  if (signature === lastDirectionalLabelDiagnosticSignature) return;
-  lastDirectionalLabelDiagnosticSignature = signature;
-
-  logLabelScaleDiagnostic('directional-casing-label-render', {
-    count: rows.length,
-    labels: rows
-  });
-}, { immediate: true });
-
 const transientPipeLabelOverlays = computed(() => {
   const physicsContext = resolvedPhysicsContext.value;
   const bounds = plotBounds.value;
@@ -1256,9 +1252,13 @@ const equipmentLabelOverlays = computed(() => {
     const center = project.value(labelMd, 0);
     const centerPoint = isFinitePoint(center) ? center : anchor;
 
-    const labelFontSize = Number.isFinite(Number(row?.labelFontSize))
+    const baseLabelFontSize = Number.isFinite(Number(row?.labelFontSize))
       ? clamp(Number(row.labelFontSize), 8, 20)
       : 11;
+    const labelFontSize = resolveDirectionalLabelFontSize(baseLabelFontSize, {
+      fallbackSize: 11,
+      scale: directionalLabelScale.value
+    });
     const lineHeight = labelFontSize + 2;
     const boxWidth = clamp(estimateLineWidth(labelText, labelFontSize) + 16, 90, 260);
     const boxHeight = (lineHeight) + (labelPaddingY * 2);
@@ -1446,7 +1446,13 @@ const fluidLabelOverlays = computed(() => {
     const centerAnchor = project.value(md, 0);
     if (!isFinitePoint(leftAnchor) || !isFinitePoint(rightAnchor) || !isFinitePoint(centerAnchor)) return;
 
-    const fontSize = Number.isFinite(Number(fluid?.fontSize)) ? Number(fluid.fontSize) : 11;
+    const baseFontSize = Number.isFinite(Number(fluid?.fontSize))
+      ? clamp(Number(fluid.fontSize), 8, 20)
+      : 11;
+    const fontSize = resolveDirectionalLabelFontSize(baseFontSize, {
+      fallbackSize: 11,
+      scale: directionalLabelScale.value
+    });
     const textColor = fluid?.textColor || 'var(--color-ink-strong)';
     const strokeColor = fluid?.color || 'var(--color-default-fluid-stroke)';
     const wrappedLines = wrapTextToLines(label, 220, fontSize);
@@ -1689,7 +1695,11 @@ const annotationBandOverlays = computed(() => {
 
     const lines = resolveAnnotationLines(box);
     const fontSizeRaw = toFiniteNumber(box?.fontSize, null);
-    const fontSize = clamp(Number.isFinite(fontSizeRaw) ? fontSizeRaw : 12, 9, 20);
+    const baseFontSize = clamp(Number.isFinite(fontSizeRaw) ? fontSizeRaw : 12, 9, 20);
+    const fontSize = resolveDirectionalLabelFontSize(baseFontSize, {
+      fallbackSize: 12,
+      scale: directionalLabelScale.value
+    });
     const lineHeight = fontSize + 5;
     const fillColor = box?.color || 'var(--color-default-box)';
     const textColor = box?.fontColor || fillColor;
@@ -1757,7 +1767,13 @@ const horizontalLineOverlays = computed(() => {
     const lineStyle = getLineStyle(line?.lineStyle);
     const lineColor = line?.color || 'var(--color-default-line)';
     const fontColor = line?.fontColor || lineColor;
-    const fontSize = Number.isFinite(Number(line?.fontSize)) ? Number(line.fontSize) : 11;
+    const baseFontSize = Number.isFinite(Number(line?.fontSize))
+      ? clamp(Number(line.fontSize), 8, 20)
+      : 11;
+    const fontSize = resolveDirectionalLabelFontSize(baseFontSize, {
+      fallbackSize: 11,
+      scale: directionalLabelScale.value
+    });
 
     const depthText = `${formatDepthValue(depthValue)} ${unitsLabel}`;
     const displayText = line?.label ? `${line.label} ${depthText}` : depthText;

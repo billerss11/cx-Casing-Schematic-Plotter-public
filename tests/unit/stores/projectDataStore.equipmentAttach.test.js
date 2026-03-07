@@ -62,4 +62,46 @@ describe('projectDataStore equipment attach normalization', () => {
     expect(row.attachToHostType).toBe('casing');
     expect(row.attachToId).toBe('csg-1');
   });
+
+  it('hydrates canonical equipment fields alongside legacy compatibility fields', () => {
+    const store = createStore();
+
+    store.setEquipmentData([
+      {
+        rowId: 'eq-canonical',
+        type: 'Safety Valve',
+        depth: 900,
+        state: {
+          actuationState: 'closed',
+          integrityStatus: 'intact'
+        },
+        properties: {
+          boreSeal: 'true',
+          annularSeal: '',
+          sealByVolume: {
+            TUBING_INNER: true
+          }
+        },
+        show: true
+      }
+    ]);
+
+    const row = store.equipmentData[0];
+    expect(row.typeKey).toBe('safety-valve');
+    expect(row.variantKey).toBeNull();
+    expect(row.state).toEqual({
+      actuationState: 'closed',
+      integrityStatus: 'intact'
+    });
+    expect(row.properties).toEqual({
+      boreSeal: 'true',
+      annularSeal: '',
+      sealByVolume: {
+        TUBING_INNER: true
+      }
+    });
+    expect(row.type).toBe('Safety Valve');
+    expect(row.actuationState).toBe('closed');
+    expect(row.boreSeal).toBe('true');
+  });
 });

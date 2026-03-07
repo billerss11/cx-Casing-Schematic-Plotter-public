@@ -11,9 +11,9 @@ import {
 } from '@/utils/pipeReference.js';
 import { resolvePipeWallGeometry } from '@/utils/pipeWallGeometry.js';
 import {
-    normalizeEquipmentTypeKey,
     resolveEquipmentTypeLabel
 } from '@/topology/equipmentDefinitions/index.js';
+import { resolveEquipmentTypeSemantics } from '@/components/schematic/layers/equipmentModelShared.js';
 
 const EPSILON = 1e-6;
 const EQUIPMENT_DEPTH_TOLERANCE = 0.5;
@@ -234,9 +234,9 @@ function collectActiveEquipment(depth, context) {
             const sourceIndex = resolveEquipmentSourceIndex(row);
             if (sourceIndex === null) return null;
 
-            const type = resolveEquipmentTypeLabel(row?.type);
+            const type = resolveEquipmentTypeLabel(row?.typeKey ?? row?.type);
             if (!type) return null;
-            const typeKey = normalizeEquipmentTypeKey(row?.type);
+            const semantics = resolveEquipmentTypeSemantics(row?.typeKey ?? row?.type);
 
             const tubingParentIndex = Number(row?.tubingParentIndex);
             const tubingParentRow = Number.isInteger(tubingParentIndex) && tubingParentIndex >= 0
@@ -255,7 +255,7 @@ function collectActiveEquipment(depth, context) {
             const resolvedSealOuterDiameter = Number(row?.sealOuterDiameter);
             const hasResolvedSealInnerDiameter = Number.isFinite(resolvedSealInnerDiameter) && resolvedSealInnerDiameter > 0;
             const hasResolvedSealOuterDiameter = Number.isFinite(resolvedSealOuterDiameter) && resolvedSealOuterDiameter > 0;
-            const isPackerLike = typeKey === 'packer' || typeKey === 'bridge-plug';
+            const isPackerLike = semantics.isPackerLike;
             const isExplicitOrphan = Boolean(row?.isOrphaned);
             const packerSealInnerDiameter = hasResolvedSealInnerDiameter
                 ? resolvedSealInnerDiameter

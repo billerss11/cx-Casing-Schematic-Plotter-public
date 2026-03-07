@@ -1,17 +1,16 @@
 import {
     MODELED_CASING_ANNULUS_KINDS,
     NODE_KIND_FORMATION_ANNULUS,
-    NODE_KIND_TUBING_ANNULUS,
     NODE_KIND_TUBING_INNER
 } from '@/topology/topologyTypes.js';
 import { TOPOLOGY_WARNING_CODES } from '@/topology/warningCatalog.js';
 
-const STRUCTURAL_RULE_ID_TUBING_ANNULUS_TRANSITION = 'tubing-annulus-transition';
 const STRUCTURAL_RULE_ID_TUBING_END_TRANSFER = 'tubing-end-transfer';
 const STRUCTURAL_RULE_ID_ANNULUS_FAMILY_TRANSITION = 'annulus-family-transition';
 const STRUCTURAL_WARNING_TRANSITION_NOT_MODELED = TOPOLOGY_WARNING_CODES.STRUCTURAL_TRANSITION_NOT_MODELED;
 const STRUCTURAL_WARNING_TUBING_END_TRANSFER_UNRESOLVED = TOPOLOGY_WARNING_CODES.TUBING_END_TRANSFER_UNRESOLVED;
 const INNERMOST_CASING_ANNULUS_KIND = MODELED_CASING_ANNULUS_KINDS[0] ?? 'ANNULUS_A';
+const SECOND_CASING_ANNULUS_KIND = MODELED_CASING_ANNULUS_KINDS[1] ?? 'ANNULUS_B';
 const INNER_CHANNEL_TUBING = 'tubing_inner';
 const INNER_CHANNEL_WELLBORE = 'wellbore_inner';
 
@@ -86,23 +85,6 @@ function resolveIntervalNode(intervalNodeByKind, interval, kind) {
     return intervalNodeByKind.get(`${intervalIndex}|${kind}`) ?? null;
 }
 
-function createTubingAnnulusTransitionDefinition(fromNode, toNode, transitionType) {
-    return {
-        ruleId: STRUCTURAL_RULE_ID_TUBING_ANNULUS_TRANSITION,
-        transitionType,
-        edgeSuffix: `${STRUCTURAL_RULE_ID_TUBING_ANNULUS_TRANSITION}:${transitionType}`,
-        primaryVolumeKind: NODE_KIND_TUBING_ANNULUS,
-        equipmentVolumeKinds: [
-            NODE_KIND_TUBING_ANNULUS,
-            INNERMOST_CASING_ANNULUS_KIND
-        ],
-        fromNode,
-        toNode,
-        summaryWhenBlocked: 'Tubing-annulus to Annulus A transition at tubing boundary is blocked by interval content or equipment seal behavior.',
-        summaryWhenOpen: 'Tubing-annulus to Annulus A transition is open across tubing boundary.'
-    };
-}
-
 function resolveInnerChannelToken(node = {}) {
     const token = String(node?.meta?.innerChannel ?? '').trim().toLowerCase();
     if (token === INNER_CHANNEL_TUBING) return INNER_CHANNEL_TUBING;
@@ -118,11 +100,11 @@ function createTubingEndTransferTransitionDefinition(fromNode, toNode, transitio
         transitionType,
         edgeSuffix: `${STRUCTURAL_RULE_ID_TUBING_END_TRANSFER}:${transitionType}`,
         primaryVolumeKind: NODE_KIND_TUBING_INNER,
-        equipmentVolumeKinds: [
+        equipmentVolumeKinds: [...new Set([
             NODE_KIND_TUBING_INNER,
-            NODE_KIND_TUBING_ANNULUS,
-            INNERMOST_CASING_ANNULUS_KIND
-        ],
+            INNERMOST_CASING_ANNULUS_KIND,
+            SECOND_CASING_ANNULUS_KIND
+        ])],
         fromNode,
         toNode,
         summaryWhenBlocked: `Tubing-end transfer ${fromNode.kind} -> ${toNode.kind} at ${boundaryLabel} boundary is blocked by interval content or equipment seal behavior.`,
@@ -255,16 +237,6 @@ export function resolveBoundaryStructuralTransitionDefinitions({
         nextInterval,
         NODE_KIND_TUBING_INNER
     );
-    const currentTubingAnnulusNode = resolveIntervalNode(
-        intervalNodeByKind,
-        currentInterval,
-        NODE_KIND_TUBING_ANNULUS
-    );
-    const nextTubingAnnulusNode = resolveIntervalNode(
-        intervalNodeByKind,
-        nextInterval,
-        NODE_KIND_TUBING_ANNULUS
-    );
     const currentAnnulusANode = resolveIntervalNode(
         intervalNodeByKind,
         currentInterval,
@@ -275,28 +247,7 @@ export function resolveBoundaryStructuralTransitionDefinitions({
         nextInterval,
         INNERMOST_CASING_ANNULUS_KIND
     );
-
     const transitionDefinitions = [];
-
-    if (currentAnnulusANode && !currentTubingAnnulusNode && nextTubingAnnulusNode) {
-        transitionDefinitions.push(
-            createTubingAnnulusTransitionDefinition(
-                currentAnnulusANode,
-                nextTubingAnnulusNode,
-                'tubing_annulus_entry'
-            )
-        );
-    }
-
-    if (currentTubingAnnulusNode && !nextTubingAnnulusNode && nextAnnulusANode) {
-        transitionDefinitions.push(
-            createTubingAnnulusTransitionDefinition(
-                currentTubingAnnulusNode,
-                nextAnnulusANode,
-                'tubing_annulus_exit'
-            )
-        );
-    }
 
     const currentInnerChannel = resolveInnerChannelToken(currentTubingInnerNode);
     const nextInnerChannel = resolveInnerChannelToken(nextTubingInnerNode);
@@ -304,9 +255,7 @@ export function resolveBoundaryStructuralTransitionDefinitions({
         && currentInnerChannel !== nextInnerChannel;
     if (innerChannelShiftsAtBoundary) {
         const shiftsIntoTubing = currentInnerChannel === INNER_CHANNEL_WELLBORE
-            && nextInnerChannel === INNER_CHANNEL_TUBING
-            && !currentTubingAnnulusNode
-            && Boolean(nextTubingAnnulusNode);
+            && nextInnerChannel === INNER_CHANNEL_TUBING;
         if (shiftsIntoTubing) {
             if (currentAnnulusANode) {
                 transitionDefinitions.push(
@@ -328,17 +277,17 @@ export function resolveBoundaryStructuralTransitionDefinitions({
         }
 
         const shiftsOutOfTubing = currentInnerChannel === INNER_CHANNEL_TUBING
-            && nextInnerChannel === INNER_CHANNEL_WELLBORE
-            && Boolean(currentTubingAnnulusNode)
-            && !nextTubingAnnulusNode;
+            && nextInnerChannel === INNER_CHANNEL_WELLBORE;
         if (shiftsOutOfTubing) {
-            transitionDefinitions.push(
-                createTubingEndTransferTransitionDefinition(
-                    currentTubingInnerNode,
-                    currentTubingAnnulusNode,
-                    'tubing_end_transfer_exit'
-                )
-            );
+            if (currentAnnulusANode) {
+                transitionDefinitions.push(
+                    createTubingEndTransferTransitionDefinition(
+                        currentTubingInnerNode,
+                        currentAnnulusANode,
+                        'tubing_end_transfer_exit'
+                    )
+                );
+            }
 
             if (nextAnnulusANode) {
                 transitionDefinitions.push(

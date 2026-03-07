@@ -107,6 +107,7 @@ const crossoverEpsilonModel = createBufferedNumberModel(() => config.crossoverEp
 const crossoverHeightModel = createBufferedNumberModel(() => config.crossoverPixelHalfHeight);
 const canvasWidthModel = createBufferedNumberModel(() => config.canvasWidthMultiplier);
 const xExaggerationModel = createBufferedNumberModel(() => config.xExaggeration);
+const directionalLabelScaleModel = createBufferedNumberModel(() => config.directionalLabelScale);
 const intervalCalloutStandoffModel = createBufferedNumberModel(() => config.intervalCalloutStandoffPx);
 const directionalCasingArrowModeOptions = Object.freeze([
   {
@@ -187,6 +188,20 @@ function handleXExaggerationSliderChange(eventOrValue) {
 function handleXExaggerationSliderCommit(eventOrValue) {
   commitBufferedCustomSlider('xExaggeration', xExaggerationModel, eventOrValue, (nextValue) => {
     viewConfigStore.setXExaggeration(nextValue);
+    requestSchematicRender({ immediate: true });
+  }, { immediate: true });
+}
+
+function handleDirectionalLabelScaleSliderChange(eventOrValue) {
+  commitBufferedCustomSlider('directionalLabelScale', directionalLabelScaleModel, eventOrValue, (nextValue) => {
+    viewConfigStore.setDirectionalLabelScale(nextValue);
+    requestSchematicRender();
+  });
+}
+
+function handleDirectionalLabelScaleSliderCommit(eventOrValue) {
+  commitBufferedCustomSlider('directionalLabelScale', directionalLabelScaleModel, eventOrValue, (nextValue) => {
+    viewConfigStore.setDirectionalLabelScale(nextValue);
     requestSchematicRender({ immediate: true });
   }, { immediate: true });
 }
@@ -323,6 +338,23 @@ onBeforeUnmount(() => {
             class="w-100"
             @change="handleXExaggerationSliderChange"
             @slideend="handleXExaggerationSliderCommit"
+          />
+        </div>
+
+        <div v-if="isDirectionalView" class="mb-2">
+          <label class="form-label">
+            <span data-i18n="ui.directional_label_scale">Directional Label Scale:</span><span>{{ directionalLabelScaleModel }}</span><span data-i18n="unit.multiplier">x</span>
+          </label>
+          <small class="input-hint" data-i18n="ui.directional_label_scale_hint">Global readability multiplier for directional overlay labels. Export uses the same scaled typography.</small>
+          <Slider
+            v-model="directionalLabelScaleModel"
+            data-vue-owned="true"
+            :min="0.8"
+            :max="2.0"
+            :step="0.05"
+            class="w-100"
+            @change="handleDirectionalLabelScaleSliderChange"
+            @slideend="handleDirectionalLabelScaleSliderCommit"
           />
         </div>
 

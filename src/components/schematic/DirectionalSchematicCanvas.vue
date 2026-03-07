@@ -69,7 +69,6 @@ import {
   normalizeMagnifierZoomLevel
 } from '@/constants/index.js';
 import { createClientPointerResolver } from '@/composables/useClientPointerResolver.js';
-import { logLabelScaleDiagnostic } from '@/utils/diagnostics.js';
 
 const EPSILON = 1e-6;
 const AUTO_FIT_HEIGHT_DELTA_THRESHOLD = 2;
@@ -150,7 +149,6 @@ const DIRECTIONAL_WHEEL_ZOOM_MAX = 4;
 let resizeObserver = null;
 let directionalRenderRequestVersion = 0;
 let lastTooltipHoverAt = 0;
-let lastDirectionalCanvasMetricSignature = '';
 
 const lastAutoFitSignature = computed(() => (
   typeof viewConfigStore.uiState?.lastDirectionalAutoFitSignature === 'string'
@@ -580,52 +578,6 @@ const displayScaleValue = computed(() => {
 const displayWidthValue = computed(() => Math.round(svgWidthValue.value * displayScaleValue.value));
 const displayHeightValue = computed(() => Math.round(figHeightValue.value * displayScaleValue.value));
 
-watch(
-  [
-    () => Number(containerWidth.value),
-    () => Number(containerHeight.value),
-    () => Number(svgWidthValue.value),
-    () => Number(figHeightValue.value),
-    () => Number(displayWidthValue.value),
-    () => Number(displayHeightValue.value),
-    () => Number(props.config?.canvasWidthMultiplier),
-    () => Number(props.config?.figHeight),
-    () => String(props.config?.viewMode ?? ''),
-    () => Boolean(props.config?.lockAspectRatio)
-  ],
-  ([
-    containerW,
-    containerH,
-    svgW,
-    figH,
-    displayW,
-    displayH,
-    canvasWidthMultiplier,
-    configFigHeight,
-    viewMode,
-    lockAspectRatioEnabled
-  ]) => {
-    const payload = {
-      containerWidth: containerW,
-      containerHeight: containerH,
-      svgWidth: svgW,
-      figHeight: figH,
-      displayWidth: displayW,
-      displayHeight: displayH,
-      canvasWidthMultiplier,
-      configFigHeight,
-      viewMode,
-      lockAspectRatioEnabled
-    };
-
-    const signature = JSON.stringify(payload);
-    if (signature === lastDirectionalCanvasMetricSignature) return;
-    lastDirectionalCanvasMetricSignature = signature;
-    logLabelScaleDiagnostic('directional-canvas-metrics', payload);
-  },
-  { immediate: true }
-);
-
 const xScale = computed(() => d3.scaleLinear()
   .domain([minXData.value, maxXData.value])
   .range([margin.left, margin.left + plotWidthValue.value]));
@@ -784,8 +736,10 @@ const depthCursor = useDepthCursorOverlay({
   plotTopY,
   plotBottomY,
   restrictXToPlot: false,
-  resolvePointerFromClient: ({ localPointer }) => (
-    invertCameraPoint(localPointer, directionalCameraState.value) ?? localPointer
+  resolvePointerFromClient: ({ clientX, clientY, localPointer }) => (
+    pointerMapping.resolvePointer({ clientX, clientY })?.canonicalPoint ??
+    invertCameraPoint(localPointer, directionalCameraState.value) ??
+    localPointer
   ),
   resolveDepth: (pointer) => {
     const tvd = Number(yScale.value.invert(pointer?.y));
@@ -1285,7 +1239,7 @@ function handleCanvasPointerUp(event) {
 }
 
 function handleCanvasPointerDown(event) {
-  if (hasInteractiveSchematicTarget(event?.target)) return;
+  if (!isCameraTransformEnabled.value && hasInteractiveSchematicTarget(event?.target)) return;
   startCameraPan(event);
 }
 

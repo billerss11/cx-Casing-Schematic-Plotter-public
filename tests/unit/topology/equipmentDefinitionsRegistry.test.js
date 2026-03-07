@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
+  createEquipmentDefinitionRegistry,
   normalizeEquipmentTypeKey,
   resolveEquipmentTypeLabel,
   resolveEquipmentDefinition,
   resolveEquipmentDefinitionByKey,
+  resolveEquipmentEditorFields,
+  resolveEquipmentHostConfig,
   resolveEquipmentInspectorFields,
+  resolveEquipmentRenderConfig,
   resolveEquipmentTypeDefaults,
   resolveEquipmentTypeSealByVolume
 } from '@/topology/equipmentDefinitions/index.js';
@@ -61,5 +65,54 @@ describe('equipment definition registry', () => {
   it('resolves optional inspector field extensions safely', () => {
     expect(resolveEquipmentInspectorFields('Packer')).toEqual([]);
     expect(resolveEquipmentInspectorFields('Unknown Tool')).toEqual([]);
+  });
+
+  it('resolves render and host metadata from the shared contract', () => {
+    expect(resolveEquipmentRenderConfig('Bridge Plug')?.family).toBe('packerLike');
+    expect(resolveEquipmentRenderConfig('Safety Valve')?.family).toBe('inlineValve');
+
+    expect(resolveEquipmentHostConfig('Packer')?.allowedHostTypes).toEqual(['tubing', 'casing']);
+    expect(resolveEquipmentHostConfig('Safety Valve')?.allowedHostTypes).toEqual(['tubing']);
+  });
+
+  it('resolves definition-driven editor field extensions safely', () => {
+    const editorFields = resolveEquipmentEditorFields('Packer', {
+      rowData: {
+        type: 'Packer'
+      }
+    });
+
+    expect(editorFields.some((field) => field.field === 'actuationState')).toBe(true);
+    expect(editorFields.some((field) => field.field === 'integrityStatus')).toBe(true);
+  });
+
+  it('supports isolated test registries with injected definitions', () => {
+    const registry = createEquipmentDefinitionRegistry([
+      Object.freeze({
+        schema: Object.freeze({
+          key: 'test-inline-valve',
+          label: 'Test Inline Valve',
+          matchTokens: Object.freeze(['test inline valve'])
+        }),
+        defaults: Object.freeze({
+          state: Object.freeze({}),
+          properties: Object.freeze({})
+        }),
+        host: Object.freeze({
+          allowedHostTypes: Object.freeze(['tubing'])
+        }),
+        engineering: Object.freeze({}),
+        render: Object.freeze({
+          family: 'inlineValve'
+        }),
+        ui: Object.freeze({
+          inspectorFields: Object.freeze([]),
+          editorFields: Object.freeze([])
+        })
+      })
+    ]);
+
+    expect(registry.normalizeTypeKey('Test Inline Valve')).toBe('test-inline-valve');
+    expect(registry.resolveDefinition('test-inline-valve')?.render?.family).toBe('inlineValve');
   });
 });

@@ -53,6 +53,7 @@ describe('useCameraPanSession', () => {
 
     expect(session.startPan(pointerDownEvent)).toBe(true);
     expect(session.isPanActive.value).toBe(true);
+    expect(pointerDownEvent.preventDefault).toHaveBeenCalledTimes(1);
 
     const result = session.finishPan(pointerUpEvent);
 

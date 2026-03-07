@@ -26,5 +26,29 @@ describe('CrossSectionEquipmentLayer', () => {
     expect(ring.exists()).toBe(true);
     expect(ring.attributes('fill')).toBe('black');
   });
+
+  it('renders bridge plug with packer-like cross-section geometry', () => {
+    const wrapper = mount(CrossSectionEquipmentLayer, {
+      props: {
+        items: [
+          {
+            equipmentIndex: 0,
+            type: 'Bridge Plug',
+            color: 'black',
+            scale: 1,
+            isOrphaned: false,
+            sealInnerRadius: 1.5,
+            sealOuterRadius: 3.0
+          }
+        ],
+        scale: 1,
+        activeEntity: null
+      }
+    });
+
+    const ring = wrapper.find('path.cross-section-equipment-layer__shape');
+    expect(ring.exists()).toBe(true);
+    expect(ring.attributes('fill')).toBe('black');
+  });
 });
 

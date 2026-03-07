@@ -223,7 +223,7 @@ const equipmentShapes = computed(() => {
           color: equip.color,
         });
       }
-    } else if (semantics.isSafetyValve) {
+    } else if (semantics.isInlineValve) {
       const isOrphaned = equip.tubingParentIndex === null;
       const tubingID = Number(equip.tubingParentID);
       if (!Number.isFinite(tubingID)) return; // SSV must be in a tubing
