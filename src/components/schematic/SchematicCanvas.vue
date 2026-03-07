@@ -1125,6 +1125,7 @@ onBeforeUnmount(() => {
         :boxes="annotationBoxRows"
         :config="config || {}"
         :smart-labels-enabled="config?.smartLabelsEnabled !== false"
+        :vertical-label-scale="config?.verticalLabelScale ?? 1"
         :x-scale="xScale"
         :y-scale="yScale"
         :x-half="xHalf"
@@ -1201,6 +1202,7 @@ onBeforeUnmount(() => {
       <CasingLayer
         :casing-data="renderPipeRows"
         :smart-labels-enabled="config?.smartLabelsEnabled !== false"
+        :vertical-label-scale="config?.verticalLabelScale ?? 1"
         :x-scale="xScale"
         :y-scale="yScale"
         :min-depth="minDepthValue"
@@ -1226,6 +1228,7 @@ onBeforeUnmount(() => {
       <EquipmentLayer
         :equipment="equipment"
         :smart-labels-enabled="config?.smartLabelsEnabled !== false"
+        :vertical-label-scale="config?.verticalLabelScale ?? 1"
         :x-scale="xScale"
         :y-scale="yScale"
         :diameter-scale="diameterScaleValue"
@@ -1250,6 +1253,7 @@ onBeforeUnmount(() => {
       <CasingLabelLayer
         :pipe-data="renderPipeRows"
         :smart-labels-enabled="config?.smartLabelsEnabled !== false"
+        :vertical-label-scale="config?.verticalLabelScale ?? 1"
         :x-scale="xScale"
         :y-scale="yScale"
         :x-half="xHalf"
@@ -1267,6 +1271,7 @@ onBeforeUnmount(() => {
         :physics-context="physicsContext"
         :config="config || {}"
         :smart-labels-enabled="config?.smartLabelsEnabled !== false"
+        :vertical-label-scale="config?.verticalLabelScale ?? 1"
         :x-scale="xScale"
         :y-scale="yScale"
         :x-half="xHalf"
@@ -1281,6 +1286,7 @@ onBeforeUnmount(() => {
       <HorizontalLineLayer
         :lines="horizontalLineRows"
         :smart-labels-enabled="config?.smartLabelsEnabled !== false"
+        :vertical-label-scale="config?.verticalLabelScale ?? 1"
         :x-scale="xScale"
         :y-scale="yScale"
         :x-half="xHalf"

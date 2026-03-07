@@ -50,6 +50,18 @@ describe('viewConfigStore camera migration flags contract', () => {
     expect(store.config.directionalLabelScale).toBe(1.35);
   });
 
+  it('initializes vertical label scale with a persisted default and setter contract', () => {
+    const store = useViewConfigStore();
+
+    expect(store.config.verticalLabelScale).toBe(1);
+    expect(store.setVerticalLabelScale).toBeTypeOf('function');
+
+    store.setVerticalLabelScale(2.25);
+    expect(store.config.verticalLabelScale).toBe(2.25);
+    store.setVerticalLabelScale(5);
+    expect(store.config.verticalLabelScale).toBe(3);
+  });
+
   it('enables smart labels by default with a persisted setter contract', () => {
     const store = useViewConfigStore();
 

@@ -40,6 +40,18 @@ describe('PlotSettings camera-control precedence contract', () => {
     expect(source).toContain('data-i18n="ui.directional_label_scale_hint"');
   });
 
+  it('exposes a vertical-only label scale control backed by the view config store', () => {
+    const source = readPlotSettingsSource();
+
+    expect(source).toContain('const verticalLabelScaleModel = createBufferedNumberModel(() => config.verticalLabelScale);');
+    expect(source).toContain('function handleVerticalLabelScaleSliderChange(eventOrValue) {');
+    expect(source).toContain('function handleVerticalLabelScaleSliderCommit(eventOrValue) {');
+    expect(source).toContain('viewConfigStore.setVerticalLabelScale(nextValue);');
+    expect(source).toContain('v-model="verticalLabelScaleModel"');
+    expect(source).toContain('data-i18n="ui.vertical_label_scale"');
+    expect(source).toContain('data-i18n="ui.vertical_label_scale_hint"');
+  });
+
   it('exposes a smart-labels toggle for both view modes', () => {
     const source = readPlotSettingsSource();
 

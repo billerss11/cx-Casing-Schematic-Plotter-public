@@ -11,7 +11,8 @@ describe('directional label scale utilities', () => {
     expect(normalizeDirectionalLabelScale()).toBe(1);
     expect(normalizeDirectionalLabelScale('bad')).toBe(1);
     expect(normalizeDirectionalLabelScale(0.2)).toBe(0.8);
-    expect(normalizeDirectionalLabelScale(2.8)).toBe(2);
+    expect(normalizeDirectionalLabelScale(2.8)).toBe(2.8);
+    expect(normalizeDirectionalLabelScale(4.2)).toBe(3);
   });
 
   it('resolves effective font sizes from base values, fallbacks, and scale', () => {

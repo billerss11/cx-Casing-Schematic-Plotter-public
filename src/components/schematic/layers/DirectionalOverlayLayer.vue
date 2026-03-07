@@ -375,7 +375,7 @@ function resolveDirectionalOverlayFontSize(baseSize, fallbackSize = 11) {
     manualScale: directionalLabelScale.value,
     autoScale: directionalSmartLabelAutoScale.value,
     minPx: 8,
-    maxPx: 24
+    maxPx: 40
   });
 }
 

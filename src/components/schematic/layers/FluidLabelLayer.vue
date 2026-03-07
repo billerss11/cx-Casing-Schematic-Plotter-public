@@ -49,6 +49,10 @@ const props = defineProps({
     type: Number,
     default: 1
   },
+  verticalLabelScale: {
+    type: Number,
+    default: 1
+  },
   smartLabelsEnabled: {
     type: Boolean,
     default: true
@@ -157,6 +161,9 @@ const fluidLabels = computed(() => {
     ? Number(props.diameterScale)
     : 1;
   const smartLabelsEnabled = props.smartLabelsEnabled === true;
+  const verticalLabelScale = Number.isFinite(Number(props.verticalLabelScale))
+    ? Math.max(0.1, Number(props.verticalLabelScale))
+    : 1;
   const visibleRows = fluids.filter((fluid) => fluid?.show !== false);
   const smartAutoScale = smartLabelsEnabled
     ? resolveSmartLabelAutoScale({
@@ -208,12 +215,12 @@ const fluidLabels = computed(() => {
     const baseFontSize = Number.isFinite(Number(fluid?.fontSize))
       ? Number(fluid.fontSize)
       : 11;
-    const fontSize = smartLabelsEnabled
-      ? resolveSmartLabelFontSize(baseFontSize, {
-        manualScale: 1,
-        autoScale: smartAutoScale
-      })
-      : baseFontSize;
+    const fontSize = resolveSmartLabelFontSize(baseFontSize, {
+      manualScale: verticalLabelScale,
+      autoScale: smartLabelsEnabled ? smartAutoScale : 1,
+      minPx: 8,
+      maxPx: 40
+    });
     const textColor = fluid?.textColor || 'var(--color-ink-strong)';
     const strokeColor = fluid?.color || 'var(--color-default-fluid-stroke)';
 

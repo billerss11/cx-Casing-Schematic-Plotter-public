@@ -36,6 +36,10 @@ const props = defineProps({
     type: Number,
     required: true
   },
+  verticalLabelScale: {
+    type: Number,
+    default: 1
+  },
   smartLabelsEnabled: {
     type: Boolean,
     default: true
@@ -68,6 +72,9 @@ const lineSegments = computed(() => {
   }
 
   const smartLabelsEnabled = props.smartLabelsEnabled === true;
+  const verticalLabelScale = Number.isFinite(Number(props.verticalLabelScale))
+    ? Math.max(0.1, Number(props.verticalLabelScale))
+    : 1;
   const visibleRows = rows.filter((row) => row?.show !== false);
   const smartAutoScale = smartLabelsEnabled
     ? resolveSmartLabelAutoScale({
@@ -88,12 +95,12 @@ const lineSegments = computed(() => {
       const fontColor = line.fontColor || lineColor;
       const fontSizeRaw = Number(line.fontSize);
       const baseFontSize = Number.isFinite(fontSizeRaw) ? fontSizeRaw : 11;
-      const fontSize = smartLabelsEnabled
-        ? resolveSmartLabelFontSize(baseFontSize, {
-          manualScale: 1,
-          autoScale: smartAutoScale
-        })
-        : baseFontSize;
+      const fontSize = resolveSmartLabelFontSize(baseFontSize, {
+        manualScale: verticalLabelScale,
+        autoScale: smartLabelsEnabled ? smartAutoScale : 1,
+        minPx: 8,
+        maxPx: 40
+      });
 
       const depthText = `${formatDepthValue(depthValue)} ${props.unitsLabel}`;
       const displayText = line.label ? `${line.label} ${depthText}` : depthText;

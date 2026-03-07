@@ -353,6 +353,8 @@
     "ui.x_exaggeration_hint": "用于控制定向井模式下水平展开程度的灵敏度。",
     "ui.directional_label_scale": "定向标签缩放：",
     "ui.directional_label_scale_hint": "全局调整定向叠加标签的可读性倍率，导出时会使用相同的缩放字体。",
+    "ui.vertical_label_scale": "垂直标签缩放：",
+    "ui.vertical_label_scale_hint": "全局调整垂直视图标签的可读性倍率，导出时会使用相同的缩放字体。",
     "ui.interval_callout_standoff": "区间标注间距：",
     "ui.interval_callout_standoff_hint": "全局控制区间标注框与井筒锚点之间的距离，适用于直井和定向井视图。",
     "ui.directional_casing_arrow_mode": "Casing Arrow Mode:",

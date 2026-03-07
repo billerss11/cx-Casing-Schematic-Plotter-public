@@ -39,6 +39,10 @@ const props = defineProps({
     type: Number,
     default: 1
   },
+  verticalLabelScale: {
+    type: Number,
+    default: 1
+  },
   smartLabelsEnabled: {
     type: Boolean,
     default: true
@@ -169,6 +173,9 @@ function compareSegmentRenderOrder(leftSegment, rightSegment) {
 const casingSegments = computed(() => {
   const rows = Array.isArray(props.casingData) ? props.casingData : [];
   const smartLabelsEnabled = props.smartLabelsEnabled === true;
+  const verticalLabelScale = Number.isFinite(Number(props.verticalLabelScale))
+    ? Math.max(0.1, Number(props.verticalLabelScale))
+    : 1;
   const diameterScale = Number.isFinite(Number(props.diameterScale)) && Number(props.diameterScale) > 0
     ? Number(props.diameterScale)
     : 1;
@@ -240,12 +247,12 @@ const casingSegments = computed(() => {
       const baseDepthLabelFontSize = Number.isFinite(depthLabelFontSizeRaw)
         ? depthLabelFontSizeRaw
         : DEFAULT_DEPTH_LABEL_FONT_SIZE;
-      const depthLabelFontSize = smartLabelsEnabled
-        ? resolveSmartLabelFontSize(baseDepthLabelFontSize, {
-          manualScale: 1,
-          autoScale: smartDepthAutoScale
-        })
-        : baseDepthLabelFontSize;
+      const depthLabelFontSize = resolveSmartLabelFontSize(baseDepthLabelFontSize, {
+        manualScale: verticalLabelScale,
+        autoScale: smartLabelsEnabled ? smartDepthAutoScale : 1,
+        minPx: 8,
+        maxPx: 40
+      });
       const annotations = [];
       const buildAnnotation = (depth) => resolveDepthAnnotationGeometry(
         outerRight,

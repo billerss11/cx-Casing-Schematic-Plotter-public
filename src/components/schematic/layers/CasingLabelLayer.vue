@@ -43,6 +43,10 @@ const props = defineProps({
     type: Number,
     default: 1
   },
+  verticalLabelScale: {
+    type: Number,
+    default: 1
+  },
   smartLabelsEnabled: {
     type: Boolean,
     default: true
@@ -140,10 +144,15 @@ function resolveLabelFontSize(row, pipeType, options = {}) {
     ? Number(row?.casingLabelFontSize)
     : Number(row?.labelFontSize);
   const baseFontSize = Number.isFinite(configured) ? clamp(configured, 8, 20) : 11;
-  if (options.smartEnabled !== true) return baseFontSize;
+  const resolvedManualScale = Number.isFinite(Number(options.manualScale))
+    ? Math.max(0.1, Number(options.manualScale))
+    : 1;
+  const resolvedAutoScale = options.smartEnabled === true ? options.autoScale : 1;
   return resolveSmartLabelFontSize(baseFontSize, {
-    manualScale: 1,
-    autoScale: options.autoScale
+    manualScale: resolvedManualScale,
+    autoScale: resolvedAutoScale,
+    minPx: 8,
+    maxPx: 40
   });
 }
 
@@ -222,6 +231,9 @@ const labels = computed(() => {
   const labelPaddingX = 8;
   const labelPaddingY = 5;
   const smartLabelsEnabled = props.smartLabelsEnabled === true;
+  const verticalLabelScale = Number.isFinite(Number(props.verticalLabelScale))
+    ? Math.max(0.1, Number(props.verticalLabelScale))
+    : 1;
   const availableTrackHeight = Math.max(1, plotBottom - plotTop);
   const smartAutoScale = smartLabelsEnabled
     ? resolveSmartLabelAutoScale({
@@ -233,7 +245,8 @@ const labels = computed(() => {
   const labels = sortedRows.map((currentRow) => {
     const labelFontSize = resolveLabelFontSize(currentRow.row, currentRow.pipeType, {
       smartEnabled: smartLabelsEnabled,
-      autoScale: smartAutoScale
+      autoScale: smartAutoScale,
+      manualScale: verticalLabelScale
     });
     const lineHeight = labelFontSize + 2;
     const midpoint = resolveAutoLabelDepth(currentRow, sortedRows);

@@ -2,10 +2,10 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import Dialog from 'primevue/dialog';
 import InputText from 'primevue/inputtext';
+import Menu from 'primevue/menu';
 import MultiSelect from 'primevue/multiselect';
 import Select from 'primevue/select';
 import SelectButton from 'primevue/selectbutton';
-import SplitButton from 'primevue/splitbutton';
 import DataManagementControls from '@/components/controls/DataManagementControls.vue';
 import { onLanguageChange, t } from '@/app/i18n.js';
 import { selectEntityByRowRef } from '@/app/selection.js';
@@ -35,6 +35,7 @@ const projectStore = useProjectStore();
 const { undoLastDelete } = useEntityEditorActions();
 const replaceProjectFileInput = ref(null);
 const appendProjectFileInput = ref(null);
+const overflowMenuRef = ref(null);
 const isDataManagementVisible = ref(false);
 const isProjectDetailsDialogVisible = ref(false);
 const isNewProjectConfirmVisible = ref(false);
@@ -90,12 +91,16 @@ const labels = computed(() => {
     appendWellsTitle: t('ui.import_wells_dialog_title'),
     appendWellsLabel: t('ui.import_wells_dialog_label'),
     appendWellsSelection: t('ui.import_wells_selected_count', { count: selectedImportedWellIds.value.length }),
+    toolbarMore: t('ui.toolbar.more'),
+    menuWell: t('ui.toolbar.menu_section_well'),
+    menuProject: t('ui.toolbar.menu_section_project'),
+    menuData: t('ui.toolbar.menu_section_data'),
     confirm: t('ui.confirm'),
     cancel: t('ui.cancel')
   };
 });
 
-const projectActionItems = computed(() => {
+const projectOverflowItems = computed(() => {
   void languageTick.value;
   return [
     {
@@ -103,7 +108,6 @@ const projectActionItems = computed(() => {
       icon: 'pi pi-save',
       command: handleSaveAs
     },
-    { separator: true },
     {
       label: t('ui.project_new'),
       icon: 'pi pi-file',
@@ -129,7 +133,6 @@ const projectActionItems = computed(() => {
       icon: 'pi pi-download',
       command: handleExportActiveWellProject
     },
-    { separator: true },
     {
       label: t('ui.reset'),
       icon: 'pi pi-refresh',
@@ -138,9 +141,14 @@ const projectActionItems = computed(() => {
   ];
 });
 
-const dataActionItems = computed(() => {
+const dataOverflowItems = computed(() => {
   void languageTick.value;
   return [
+    {
+      label: t('ui.data_management'),
+      icon: 'pi pi-database',
+      command: openDataManagement
+    },
     {
       label: t('ui.export_excel'),
       icon: 'pi pi-file-excel',
@@ -183,7 +191,7 @@ const canDuplicateActiveWell = computed(() => Boolean(projectStore.activeWellId)
 const canDeleteActiveWell = computed(() => (
   Boolean(projectStore.activeWellId) && wellOptions.value.length > 1
 ));
-const wellActionItems = computed(() => {
+const wellOverflowItems = computed(() => {
   void languageTick.value;
   return [
     {
@@ -198,6 +206,19 @@ const wellActionItems = computed(() => {
       disabled: !canDeleteActiveWell.value,
       command: openDeleteWellConfirm
     }
+  ];
+});
+const overflowMenuItems = computed(() => {
+  void languageTick.value;
+  return [
+    createOverflowMenuHeading(labels.value.menuWell),
+    ...wellOverflowItems.value,
+    { separator: true },
+    createOverflowMenuHeading(labels.value.menuProject),
+    ...projectOverflowItems.value,
+    { separator: true },
+    createOverflowMenuHeading(labels.value.menuData),
+    ...dataOverflowItems.value
   ];
 });
 const deleteWellConfirmMessage = computed(() => (
@@ -263,6 +284,14 @@ const projectDetailsWellNameError = computed(() => {
   return '';
 });
 
+function createOverflowMenuHeading(label) {
+  return {
+    label,
+    disabled: true,
+    class: 'workspace-project-actions__menu-heading'
+  };
+}
+
 function isTextInputLikeElement(element) {
   if (!(element instanceof HTMLElement)) return false;
   const tag = element.tagName;
@@ -318,6 +347,10 @@ async function handleSave() {
 
 async function handleSaveAs() {
   return runSaveAction(() => saveProjectFileAs());
+}
+
+function toggleOverflowMenu(event) {
+  overflowMenuRef.value?.toggle(event);
 }
 
 function handleGlobalProjectShortcut(event) {
@@ -633,60 +666,63 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="workspace-project-actions">
-    <div class="workspace-project-actions__group workspace-project-actions__group--well">
-      <div class="workspace-project-actions__well-switcher">
-        <label class="workspace-project-actions__well-label">{{ labels.activeWell }}</label>
-        <Select
-          v-model="activeWellIdModel"
-          :options="wellOptions"
-          option-label="label"
-          option-value="value"
-          size="small"
-          class="workspace-project-actions__well-select"
-        />
-      </div>
-
-      <SplitButton
-        type="button"
+    <div class="workspace-project-actions__well-switcher">
+      <label class="workspace-project-actions__well-label">{{ labels.activeWell }}</label>
+      <Select
+        v-model="activeWellIdModel"
+        :options="wellOptions"
+        option-label="label"
+        option-value="value"
         size="small"
-        severity="success"
-        outlined
-        icon="pi pi-plus"
-        :label="labels.newWell"
-        :model="wellActionItems"
-        @click="openNewWellDialog"
+        class="workspace-project-actions__well-select"
       />
     </div>
 
-    <div class="workspace-project-actions__group workspace-project-actions__group--project">
-      <SplitButton
-        type="button"
-        size="small"
-        severity="success"
-        outlined
-        icon="pi pi-save"
-        :label="labels.save"
-        :model="projectActionItems"
-        :title="labels.saveShortcut"
-        :disabled="isSaveInProgress"
-        class="workspace-project-actions__save-control"
-        @click="handleSave"
-      />
-      <span :class="saveStatusClassName">{{ saveStatusText }}</span>
-    </div>
+    <Button
+      type="button"
+      size="small"
+      outlined
+      class="workspace-project-actions__action"
+      icon="pi pi-plus"
+      :label="labels.newWell"
+      @click="openNewWellDialog"
+    />
 
-    <div class="workspace-project-actions__group workspace-project-actions__group--data">
-      <SplitButton
-        type="button"
-        size="small"
-        severity="info"
-        outlined
-        icon="pi pi-database"
-        :label="labels.dataManagement"
-        :model="dataActionItems"
-        @click="openDataManagement"
-      />
-    </div>
+    <Button
+      type="button"
+      size="small"
+      outlined
+      class="workspace-project-actions__action workspace-project-actions__action--save"
+      icon="pi pi-save"
+      :label="labels.save"
+      :title="labels.saveShortcut"
+      :disabled="isSaveInProgress"
+      @click="handleSave"
+    />
+
+    <span :class="saveStatusClassName">{{ saveStatusText }}</span>
+
+    <Button
+      type="button"
+      size="small"
+      text
+      rounded
+      class="workspace-project-actions__overflow-trigger"
+      icon="pi pi-ellipsis-v"
+      :title="labels.toolbarMore"
+      :aria-label="labels.toolbarMore"
+      aria-haspopup="true"
+      aria-controls="workspaceProjectOverflowMenu"
+      @click="toggleOverflowMenu"
+    />
+
+    <Menu
+      id="workspaceProjectOverflowMenu"
+      ref="overflowMenuRef"
+      class="workspace-project-actions__overflow-menu"
+      :model="overflowMenuItems"
+      :popup="true"
+    />
 
     <input
       ref="replaceProjectFileInput"
@@ -923,51 +959,86 @@ onBeforeUnmount(() => {
 .workspace-project-actions {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.workspace-project-actions__group {
-  display: inline-flex;
-  align-items: center;
   gap: 6px;
-  min-height: 38px;
-  padding: 4px 6px;
-  border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
-  border-radius: var(--radius-pill);
-  background: color-mix(in srgb, var(--panel-bg) 92%, transparent);
+  min-height: 32px;
+  min-width: 0;
 }
 
 .workspace-project-actions__well-switcher {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  min-height: 32px;
+  padding: 0 8px;
+  border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--panel-bg) 92%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-surface-elevated) 35%, transparent);
+  flex: 0 0 auto;
+  min-width: 0;
 }
 
 .workspace-project-actions__well-label {
-  font-size: 0.76rem;
-  font-weight: 600;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
   color: var(--muted);
   white-space: nowrap;
 }
 
 .workspace-project-actions__well-select {
-  min-width: 13rem;
+  min-width: 10.75rem;
 }
 
-.workspace-project-actions__save-control {
+.workspace-project-actions__action {
+  min-height: 32px;
   flex: 0 0 auto;
+}
+
+.workspace-project-actions__action :deep(.p-button-label) {
+  font-weight: 600;
+}
+
+.workspace-project-actions__action--save :deep(.p-button-label) {
+  font-weight: 700;
+}
+
+.workspace-project-actions__overflow-trigger {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+}
+
+.workspace-project-actions__overflow-menu :deep(ul.p-menu-list) {
+  min-width: 14.5rem;
+}
+
+.workspace-project-actions__overflow-menu :deep(li.workspace-project-actions__menu-heading .p-menu-item-link) {
+  pointer-events: none;
+  opacity: 1;
+  padding-top: 0.5rem;
+  padding-bottom: 0.3rem;
+}
+
+.workspace-project-actions__overflow-menu :deep(li.workspace-project-actions__menu-heading .p-menu-item-label) {
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 
 .workspace-project-actions__save-status {
   display: inline-flex;
   align-items: center;
   min-height: 30px;
-  padding: 0 0.55rem;
+  padding: 0 0.48rem;
   border-radius: 999px;
-  font-size: 0.76rem;
+  font-size: 0.68rem;
   font-weight: 700;
-  letter-spacing: 0.01em;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
   border: 1px solid transparent;
 }
 
@@ -1015,5 +1086,22 @@ onBeforeUnmount(() => {
 
 .workspace-project-actions :deep(.p-button-label) {
   white-space: nowrap;
+}
+
+@media (max-width: 1199px) {
+  .workspace-project-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+
+  .workspace-project-actions__well-switcher {
+    flex: 1 1 auto;
+  }
+
+  .workspace-project-actions__well-select {
+    min-width: 8.5rem;
+    flex: 1 1 auto;
+  }
 }
 </style>

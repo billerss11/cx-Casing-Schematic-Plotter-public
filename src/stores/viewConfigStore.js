@@ -80,6 +80,7 @@ export function createDefaultViewConfig() {
         topologyUseOpenHoleSource: false,
         smartLabelsEnabled: true,
         xExaggeration: 1.0,
+        verticalLabelScale: 1.0,
         directionalLabelScale: DEFAULT_DIRECTIONAL_LABEL_SCALE,
         intervalCalloutStandoffPx: DEFAULT_INTERVAL_CALLOUT_STANDOFF_PX,
         directionalCasingArrowMode: DIRECTIONAL_CASING_ARROW_MODE_NORMAL_LOCKED,
@@ -366,9 +367,11 @@ export const useViewConfigStore = defineStore('viewConfig', () => {
         if (!key || !SUPPORTED_VIEW_CONFIG_KEYS.has(key)) return false;
         const normalizedValue = key === 'directionalLabelScale'
             ? normalizeDirectionalLabelScale(value, config.directionalLabelScale)
+            : (key === 'verticalLabelScale'
+                ? normalizeDirectionalLabelScale(value, config.verticalLabelScale)
             : (key === 'smartLabelsEnabled'
                 ? normalizeSmartLabelsEnabled(value, config.smartLabelsEnabled)
-                : value);
+                : value));
         if (Object.is(config[key], normalizedValue)) return false;
         config[key] = normalizedValue;
         return true;
@@ -553,9 +556,11 @@ export const useViewConfigStore = defineStore('viewConfig', () => {
             if (!SUPPORTED_VIEW_CONFIG_KEYS.has(key)) return;
             const normalizedValue = key === 'directionalLabelScale'
                 ? normalizeDirectionalLabelScale(value, config.directionalLabelScale)
+                : (key === 'verticalLabelScale'
+                    ? normalizeDirectionalLabelScale(value, config.verticalLabelScale)
                 : (key === 'smartLabelsEnabled'
                     ? normalizeSmartLabelsEnabled(value, config.smartLabelsEnabled)
-                    : value);
+                    : value));
             if (Object.is(config[key], normalizedValue)) return;
             config[key] = normalizedValue;
             changedKeys.push(key);
@@ -899,6 +904,15 @@ export const useViewConfigStore = defineStore('viewConfig', () => {
         return normalized;
     }
 
+    function setVerticalLabelScale(value) {
+        const normalized = normalizeDirectionalLabelScale(
+            value,
+            config.verticalLabelScale
+        );
+        setConfigValue('verticalLabelScale', normalized);
+        return normalized;
+    }
+
     function setIntervalCalloutStandoffPx(value) {
         const normalized = normalizeIntervalCalloutStandoffPx(
             value,
@@ -1053,6 +1067,7 @@ export const useViewConfigStore = defineStore('viewConfig', () => {
         setVerticalSectionSelection,
         setViewMode,
         setSmartLabelsEnabled,
+        setVerticalLabelScale,
         setXExaggeration,
         setDirectionalLabelScale,
         setIntervalCalloutStandoffPx,
